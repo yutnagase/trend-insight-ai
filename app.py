@@ -8,16 +8,15 @@ from pathlib import Path
 
 import feedparser
 import streamlit as st
-from asari.api import Sonar
+import torch
 from janome.tokenizer import Tokenizer
+from transformers import AutoModelForSequenceClassification, AutoTokenizer, pipeline
 from wordcloud import WordCloud
 
 HISTORY_PATH = Path("data/analysis_history.json")
 FONT_PATH = "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf"
 FETCH_COUNT = 30
-
-sonar = Sonar()
-tokenizer = Tokenizer()
+MODEL_NAME = "koheiduck/bert-japanese-finetuned-sentiment"
 
 # ストップワード（助詞・助動詞・不要語）
 STOP_WORDS: set[str] = {
@@ -26,6 +25,42 @@ STOP_WORDS: set[str] = {
     "さん", "ため", "から", "まで", "など", "について", "として", "における",
     "Yahoo", "ニュース", "新聞", "速報", "記事", "配信", "発表",
 }
+
+# ネガティブ補正用辞書（強いネガティブ語）
+NEGATIVE_BOOST_WORDS: set[str] = {
+    "戦争", "悲惨", "孤児", "死亡", "倒産", "殺害", "虐待", "災害", "被害",
+    "犠牲", "破壊", "崩壊", "暴力", "貧困", "飢餓", "難民", "紛争", "侵攻",
+    "爆撃", "テロ", "事故", "汚染", "感染", "死者", "遺体", "自殺", "破綻",
+    "詐欺", "逮捕", "懲役", "不正", "隠蔽", "搾取", "差別", "迫害",
+}
+NEGATIVE_BOOST_WEIGHT: float = 0.3
+
+
+@st.cache_resource
+def load_sentiment_model():
+    """感情分析モデルを起動時に一度だけロードする.
+
+    Returns:
+        transformers pipelineオブジェクト.
+    """
+    return pipeline(
+        "sentiment-analysis",
+        model=MODEL_NAME,
+        tokenizer=MODEL_NAME,
+        device=-1,  # CPU
+        truncation=True,
+        max_length=512,
+    )
+
+
+@st.cache_resource
+def load_tokenizer() -> Tokenizer:
+    """janomeトークナイザーを起動時に一度だけロードする.
+
+    Returns:
+        Tokenizerインスタンス.
+    """
+    return Tokenizer()
 
 
 def fetch_articles(keyword: str) -> list[dict[str, str]]:
@@ -38,7 +73,6 @@ def fetch_articles(keyword: str) -> list[dict[str, str]]:
         タイトルとURLを含む辞書のリスト.
     """
     encoded = urllib.parse.quote(keyword)
-    # タイムスタンプで確実に最新を取得（キャッシュ回避）
     ts = datetime.now().timestamp()
     url = (
         f"https://news.google.com/rss/search?q={encoded}&hl=ja&gl=JP"
@@ -52,7 +86,10 @@ def fetch_articles(keyword: str) -> list[dict[str, str]]:
 
 
 def analyze_sentiment(title: str) -> dict[str, float | str]:
-    """記事タイトルの感情分析をasariで実施する.
+    """記事タイトルの感情分析をBERTモデル+辞書補正で実施する.
+
+    モデルの確信度が低い（中立的な文）場合は50:50として扱い、
+    強ネガティブ語が含まれる場合のみ補正を適用する。
 
     Args:
         title: 分析対象のテキスト.
@@ -60,13 +97,37 @@ def analyze_sentiment(title: str) -> dict[str, float | str]:
     Returns:
         positive/negativeスコアとラベルを含む辞書.
     """
-    result = sonar.ping(text=title)
-    scores = {item["class_name"]: item["confidence"] for item in result["classes"]}
-    return {
-        "positive": scores.get("positive", 0.0),
-        "negative": scores.get("negative", 0.0),
-        "label": result["top_class"],
-    }
+    classifier = load_sentiment_model()
+    result = classifier(title)[0]
+    label = result["label"].upper()
+    score = result["score"]
+
+    # モデルが3クラス（POSITIVE/NEGATIVE/NEUTRAL）を出力
+    if label == "POSITIVE":
+        pos_score = score
+        neg_score = 1.0 - score
+    elif label == "NEGATIVE":
+        neg_score = score
+        pos_score = 1.0 - score
+    else:  # NEUTRAL
+        pos_score = 0.5
+        neg_score = 0.5
+
+    # ネガティブ辞書による補正（強ネガティブ語が存在する場合のみ）
+    boost = sum(1 for w in NEGATIVE_BOOST_WORDS if w in title)
+    if boost > 0:
+        adjustment = min(boost * NEGATIVE_BOOST_WEIGHT, 0.5)
+        neg_score = min(neg_score + adjustment, 1.0)
+        pos_score = max(pos_score - adjustment, 0.0)
+
+    # 最終ラベル判定（3段階）
+    if abs(pos_score - neg_score) < 0.1:
+        final_label = "neutral"
+    elif pos_score > neg_score:
+        final_label = "positive"
+    else:
+        final_label = "negative"
+    return {"positive": pos_score, "negative": neg_score, "label": final_label}
 
 
 def extract_keywords(
@@ -81,10 +142,11 @@ def extract_keywords(
     Returns:
         (単語, 出現回数)のリスト（頻出順）.
     """
+    tok = load_tokenizer()
     stop = STOP_WORDS | {search_keyword}
     words: list[str] = []
     for title in titles:
-        for token in tokenizer.tokenize(title):
+        for token in tok.tokenize(title):
             part = token.part_of_speech.split(",")[0]
             surface = token.surface
             if part == "名詞" and len(surface) > 1 and surface not in stop:
@@ -150,24 +212,39 @@ def main() -> None:
                 return
 
             results: list[dict] = []
-            for article in articles:
+            progress = st.progress(0)
+            for i, article in enumerate(articles):
                 scores = analyze_sentiment(article["title"])
                 results.append({**article, **scores})
+                progress.progress((i + 1) / len(articles))
+            progress.empty()
 
-            # 平均スコア算出
-            avg_positive = sum(r["positive"] for r in results) / len(results)
-            avg_negative = sum(r["negative"] for r in results) / len(results)
+            # ラベル別集計
+            total = len(results)
+            pos_count = sum(1 for r in results if r["label"] == "positive")
+            neg_count = sum(1 for r in results if r["label"] == "negative")
+            neu_count = total - pos_count - neg_count
+            pos_pct = pos_count / total
+            neg_pct = neg_count / total
+            neu_pct = neu_count / total
 
             # 世の中の空気感表示
             st.subheader("🌡️ 世の中の空気感")
-            col1, col2 = st.columns(2)
-            col1.metric("ポジティブ", f"{avg_positive:.1%}")
-            col2.metric("ネガティブ", f"{avg_negative:.1%}")
+            col1, col2, col3 = st.columns(3)
+            col1.metric("ポジティブ", f"{pos_pct:.1%}")
+            col2.metric("中立", f"{neu_pct:.1%}")
+            col3.metric("ネガティブ", f"{neg_pct:.1%}")
 
-            if avg_positive > avg_negative:
+            dominant = max(
+                ("positive", pos_pct), ("neutral", neu_pct), ("negative", neg_pct),
+                key=lambda x: x[1],
+            )
+            if dominant[0] == "positive":
                 st.success("全体的にポジティブな傾向です 😊")
-            else:
+            elif dominant[0] == "negative":
                 st.error("全体的にネガティブな傾向です 😟")
+            else:
+                st.info("全体的に中立的な傾向です 😐")
 
             # ワードクラウド表示
             titles = [r["title"] for r in results]
@@ -186,7 +263,9 @@ def main() -> None:
             # 個別記事表示
             st.subheader("📰 記事一覧")
             for r in results:
-                emoji = "🟢" if r["label"] == "positive" else "🔴"
+                emoji = {"positive": "🟢", "negative": "🔴", "neutral": "⚪"}[
+                    r["label"]
+                ]
                 st.markdown(
                     f"{emoji} [{r['title']}]({r['url']}) "
                     f"(positive: {r['positive']:.1%})"
