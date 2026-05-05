@@ -1,22 +1,18 @@
-"""TrendInsight AI - キーワードに基づくニューストレンド感情分析アプリ."""
+"""TrendInsight AI - メディアとSNSの両論併記によるトレンド感情分析アプリ."""
 
 import json
-import urllib.parse
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
-import feedparser
 import streamlit as st
-import torch
-from janome.tokenizer import Tokenizer
-from transformers import AutoModelForSequenceClassification, AutoTokenizer, pipeline
 from wordcloud import WordCloud
+
+from src.analyzer import analyze_sentiment, compute_sentiment_stats, load_tokenizer
+from src.collector import fetch_bluesky_posts, fetch_news_articles
 
 HISTORY_PATH = Path("data/analysis_history.json")
 FONT_PATH = "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf"
-FETCH_COUNT = 30
-MODEL_NAME = "koheiduck/bert-japanese-finetuned-sentiment"
 
 # ストップワード（助詞・助動詞・不要語）
 STOP_WORDS: set[str] = {
@@ -24,119 +20,17 @@ STOP_WORDS: set[str] = {
     "ある", "こと", "それ", "これ", "ない", "なる", "れる", "られる", "よう",
     "さん", "ため", "から", "まで", "など", "について", "として", "における",
     "Yahoo", "ニュース", "新聞", "速報", "記事", "配信", "発表",
+    "https", "http", "www", "com", "jp",
 }
-
-# ネガティブ補正用辞書（強いネガティブ語）
-NEGATIVE_BOOST_WORDS: set[str] = {
-    "戦争", "悲惨", "孤児", "死亡", "倒産", "殺害", "虐待", "災害", "被害",
-    "犠牲", "破壊", "崩壊", "暴力", "貧困", "飢餓", "難民", "紛争", "侵攻",
-    "爆撃", "テロ", "事故", "汚染", "感染", "死者", "遺体", "自殺", "破綻",
-    "詐欺", "逮捕", "懲役", "不正", "隠蔽", "搾取", "差別", "迫害",
-}
-NEGATIVE_BOOST_WEIGHT: float = 0.3
-
-
-@st.cache_resource
-def load_sentiment_model():
-    """感情分析モデルを起動時に一度だけロードする.
-
-    Returns:
-        transformers pipelineオブジェクト.
-    """
-    return pipeline(
-        "sentiment-analysis",
-        model=MODEL_NAME,
-        tokenizer=MODEL_NAME,
-        device=-1,  # CPU
-        truncation=True,
-        max_length=512,
-    )
-
-
-@st.cache_resource
-def load_tokenizer() -> Tokenizer:
-    """janomeトークナイザーを起動時に一度だけロードする.
-
-    Returns:
-        Tokenizerインスタンス.
-    """
-    return Tokenizer()
-
-
-def fetch_articles(keyword: str) -> list[dict[str, str]]:
-    """GoogleニュースRSSからキーワード関連記事を最大30件取得する.
-
-    Args:
-        keyword: 検索キーワード.
-
-    Returns:
-        タイトルとURLを含む辞書のリスト.
-    """
-    encoded = urllib.parse.quote(keyword)
-    ts = datetime.now().timestamp()
-    url = (
-        f"https://news.google.com/rss/search?q={encoded}&hl=ja&gl=JP"
-        f"&ceid=JP:ja&_t={ts}"
-    )
-    feed = feedparser.parse(url)
-    return [
-        {"title": entry.title, "url": entry.link}
-        for entry in feed.entries[:FETCH_COUNT]
-    ]
-
-
-def analyze_sentiment(title: str) -> dict[str, float | str]:
-    """記事タイトルの感情分析をBERTモデル+辞書補正で実施する.
-
-    モデルの確信度が低い（中立的な文）場合は50:50として扱い、
-    強ネガティブ語が含まれる場合のみ補正を適用する。
-
-    Args:
-        title: 分析対象のテキスト.
-
-    Returns:
-        positive/negativeスコアとラベルを含む辞書.
-    """
-    classifier = load_sentiment_model()
-    result = classifier(title)[0]
-    label = result["label"].upper()
-    score = result["score"]
-
-    # モデルが3クラス（POSITIVE/NEGATIVE/NEUTRAL）を出力
-    if label == "POSITIVE":
-        pos_score = score
-        neg_score = 1.0 - score
-    elif label == "NEGATIVE":
-        neg_score = score
-        pos_score = 1.0 - score
-    else:  # NEUTRAL
-        pos_score = 0.5
-        neg_score = 0.5
-
-    # ネガティブ辞書による補正（強ネガティブ語が存在する場合のみ）
-    boost = sum(1 for w in NEGATIVE_BOOST_WORDS if w in title)
-    if boost > 0:
-        adjustment = min(boost * NEGATIVE_BOOST_WEIGHT, 0.5)
-        neg_score = min(neg_score + adjustment, 1.0)
-        pos_score = max(pos_score - adjustment, 0.0)
-
-    # 最終ラベル判定（3段階）
-    if abs(pos_score - neg_score) < 0.1:
-        final_label = "neutral"
-    elif pos_score > neg_score:
-        final_label = "positive"
-    else:
-        final_label = "negative"
-    return {"positive": pos_score, "negative": neg_score, "label": final_label}
 
 
 def extract_keywords(
     titles: list[str], search_keyword: str
 ) -> list[tuple[str, int]]:
-    """記事タイトル群から名詞を抽出し頻出順に返す.
+    """テキスト群から名詞を抽出し頻出順に返す.
 
     Args:
-        titles: 記事タイトルのリスト.
+        titles: テキストのリスト.
         search_keyword: 除外する検索キーワード.
 
     Returns:
@@ -154,16 +48,17 @@ def extract_keywords(
     return Counter(words).most_common()
 
 
-def generate_wordcloud(word_freq: list[tuple[str, int]]) -> WordCloud:
+def generate_wordcloud(word_freq: list[tuple[str, int]]) -> WordCloud | None:
     """頻出単語からワードクラウドを生成する.
 
     Args:
         word_freq: (単語, 出現回数)のリスト.
 
     Returns:
-        生成されたWordCloudオブジェクト.
+        生成されたWordCloudオブジェクト、またはデータ不足時None.
     """
-    freq_dict = dict(word_freq)
+    if not word_freq:
+        return None
     wc = WordCloud(
         font_path=FONT_PATH,
         width=800,
@@ -171,16 +66,54 @@ def generate_wordcloud(word_freq: list[tuple[str, int]]) -> WordCloud:
         background_color="white",
         colormap="viridis",
     )
-    wc.generate_from_frequencies(freq_dict)
+    wc.generate_from_frequencies(dict(word_freq))
     return wc
 
 
-def save_history(keyword: str, results: list[dict]) -> None:
+def generate_insight(
+    news_stats: dict[str, float], sns_stats: dict[str, float]
+) -> str:
+    """メディアとSNSの感情スコアを比較しインサイトを生成する.
+
+    Args:
+        news_stats: メディア側の感情比率.
+        sns_stats: SNS側の感情比率.
+
+    Returns:
+        比較インサイトのテキスト.
+    """
+    def dominant(stats: dict[str, float]) -> str:
+        return max(stats, key=stats.get)
+
+    news_dom = dominant(news_stats)
+    sns_dom = dominant(sns_stats)
+
+    tone_map = {
+        "positive": "ポジティブ（好意的）",
+        "neutral": "中立的（事実報道中心）",
+        "negative": "ネガティブ（批判的・懸念）",
+    }
+
+    if news_dom == sns_dom:
+        return (
+            f"📊 メディアもSNSも**{tone_map[news_dom]}**な論調が中心です。"
+            f"世論とメディアの方向性が一致しています。"
+        )
+
+    return (
+        f"📊 メディアでは**{tone_map[news_dom]}**な報道が中心ですが、"
+        f"SNSでは**{tone_map[sns_dom]}**な反応が目立ちます。"
+        f"メディアと世論の間にギャップがあります。"
+    )
+
+
+def save_history(keyword: str, news_results: list[dict], sns_results: list[dict]) -> None:
     """分析結果を履歴JSONに追記保存する.
 
     Args:
         keyword: 検索キーワード.
-        results: 分析結果リスト.
+        news_results: メディア分析結果.
+        sns_results: SNS分析結果.
     """
     HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
     history: list[dict] = []
@@ -189,91 +122,196 @@ def save_history(keyword: str, results: list[dict]) -> None:
     history.append({
         "timestamp": datetime.now().isoformat(),
         "keyword": keyword,
-        "results": results,
+        "news_results": news_results,
+        "sns_results": sns_results,
     })
     HISTORY_PATH.write_text(
         json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
 
+def render_sentiment_metrics(stats: dict[str, float]) -> None:
+    """感情比率を3カラムで表示する.
+
+    Args:
+        stats: positive/neutral/negativeの比率.
+    """
+    col1, col2, col3 = st.columns(3)
+    col1.metric("ポジティブ", f"{stats['positive']:.1%}")
+    col2.metric("中立", f"{stats['neutral']:.1%}")
+    col3.metric("ネガティブ", f"{stats['negative']:.1%}")
+
+
+def render_article_list(results: list[dict], show_author: bool = False) -> None:
+    """記事/投稿一覧を表示する.
+
+    Args:
+        results: 分析結果リスト.
+        show_author: 著者を表示するか.
+    """
+    for r in results:
+        emoji = {"positive": "🟢", "negative": "🔴", "neutral": "⚪"}[r["label"]]
+        author = f" ({r['author']})" if show_author and "author" in r else ""
+        st.markdown(
+            f"{emoji} [{r['title'][:80]}]({r['url']}){author} "
+            f"(positive: {r['positive']:.1%})"
+        )
+
+
 def main() -> None:
     """Streamlit UIのメインエントリポイント."""
-    st.set_page_config(page_title="TrendInsight AI", page_icon="📊")
+    st.set_page_config(page_title="TrendInsight AI", page_icon="📊", layout="wide")
     st.title("📊 TrendInsight AI")
-    st.caption("キーワードから世の中の空気感を読み取る")
+    st.caption("メディアとSNSの両面から世の中の空気感を読み取る")
 
+    # サイドバー: BlueSky認証設定
+    with st.sidebar:
+        st.header("⚙️ 設定")
+        st.subheader("BlueSky認証")
+        bsky_handle = st.text_input(
+            "ハンドル", placeholder="yourname.bsky.social"
+        )
+        bsky_password = st.text_input(
+            "アプリパスワード", type="password",
+            help="BlueSky設定 > アプリパスワードから生成"
+        )
+        st.markdown(
+            "[アプリパスワードの生成方法]"
+            "(https://bsky.app/settings/app-passwords)"
+        )
+
+    # メイン: キーワード入力
     keyword = st.text_input("分析キーワードを入力", placeholder="例: 生成AI")
 
     if st.button("分析開始", disabled=not keyword):
-        with st.spinner("記事を収集・分析中..."):
-            articles = fetch_articles(keyword)
-            if not articles:
-                st.warning("記事が見つかりませんでした。")
-                return
+        # --- データ収集 ---
+        with st.spinner("📰 ニュース記事を収集中..."):
+            news_articles = fetch_news_articles(keyword)
 
-            results: list[dict] = []
-            progress = st.progress(0)
-            for i, article in enumerate(articles):
+        sns_articles: list[dict[str, str]] = []
+        if bsky_handle and bsky_password:
+            with st.spinner("💬 BlueSky投稿を収集中..."):
+                try:
+                    sns_articles = fetch_bluesky_posts(
+                        keyword, bsky_handle, bsky_password
+                    )
+                except Exception as e:
+                    st.warning(f"BlueSky取得エラー: {e}")
+        else:
+            st.info("💡 サイドバーでBlueSky認証を設定すると、SNSの声も分析できます。")
+
+        if not news_articles and not sns_articles:
+            st.warning("記事・投稿が見つかりませんでした。")
+            return
+
+        # --- 感情分析 ---
+        news_results: list[dict] = []
+        sns_results: list[dict] = []
+
+        if news_articles:
+            progress = st.progress(0, text="メディア記事を分析中...")
+            for i, article in enumerate(news_articles):
                 scores = analyze_sentiment(article["title"])
-                results.append({**article, **scores})
-                progress.progress((i + 1) / len(articles))
+                news_results.append({**article, **scores})
+                progress.progress((i + 1) / len(news_articles))
             progress.empty()
 
-            # ラベル別集計
-            total = len(results)
-            pos_count = sum(1 for r in results if r["label"] == "positive")
-            neg_count = sum(1 for r in results if r["label"] == "negative")
-            neu_count = total - pos_count - neg_count
-            pos_pct = pos_count / total
-            neg_pct = neg_count / total
-            neu_pct = neu_count / total
+        if sns_articles:
+            progress = st.progress(0, text="SNS投稿を分析中...")
+            for i, post in enumerate(sns_articles):
+                scores = analyze_sentiment(post["title"])
+                sns_results.append({**post, **scores})
+                progress.progress((i + 1) / len(sns_articles))
+            progress.empty()
 
-            # 世の中の空気感表示
+        # --- 感情スコア表示 ---
+        news_stats = compute_sentiment_stats(news_results)
+        sns_stats = compute_sentiment_stats(sns_results)
+
+        if sns_results:
+            # 両論併記モード
             st.subheader("🌡️ 世の中の空気感")
-            col1, col2, col3 = st.columns(3)
-            col1.metric("ポジティブ", f"{pos_pct:.1%}")
-            col2.metric("中立", f"{neu_pct:.1%}")
-            col3.metric("ネガティブ", f"{neg_pct:.1%}")
+            col_news, col_sns = st.columns(2)
 
-            dominant = max(
-                ("positive", pos_pct), ("neutral", neu_pct), ("negative", neg_pct),
-                key=lambda x: x[1],
-            )
-            if dominant[0] == "positive":
-                st.success("全体的にポジティブな傾向です 😊")
-            elif dominant[0] == "negative":
-                st.error("全体的にネガティブな傾向です 😟")
-            else:
-                st.info("全体的に中立的な傾向です 😐")
+            with col_news:
+                st.markdown("#### 📰 メディア（Googleニュース）")
+                render_sentiment_metrics(news_stats)
 
-            # ワードクラウド表示
-            titles = [r["title"] for r in results]
-            word_freq = extract_keywords(titles, keyword)
+            with col_sns:
+                st.markdown("#### 💬 SNS（BlueSky）")
+                render_sentiment_metrics(sns_stats)
 
+            # インサイト表示
+            st.divider()
+            st.markdown(generate_insight(news_stats, sns_stats))
+        else:
+            # メディアのみモード
+            st.subheader("🌡️ 世の中の空気感（メディア）")
+            render_sentiment_metrics(news_stats)
+
+        # --- ワードクラウド ---
+        news_titles = [r["title"] for r in news_results]
+        sns_titles = [r["title"] for r in sns_results]
+
+        if sns_results:
+            st.subheader("☁️ ワードクラウド")
+            wc_col1, wc_col2 = st.columns(2)
+
+            with wc_col1:
+                st.markdown("**📰 メディア**")
+                wc = generate_wordcloud(extract_keywords(news_titles, keyword))
+                if wc:
+                    st.image(wc.to_array(), use_container_width=True)
+
+            with wc_col2:
+                st.markdown("**💬 SNS**")
+                wc = generate_wordcloud(extract_keywords(sns_titles, keyword))
+                if wc:
+                    st.image(wc.to_array(), use_container_width=True)
+        else:
+            word_freq = extract_keywords(news_titles, keyword)
             if word_freq:
                 st.subheader("☁️ ワードクラウド")
                 wc = generate_wordcloud(word_freq)
-                st.image(wc.to_array(), use_container_width=True)
+                if wc:
+                    st.image(wc.to_array(), use_container_width=True)
 
-                # トップ5キーワード表示
-                st.subheader("🔑 トレンド・キーワード TOP5")
-                for i, (word, count) in enumerate(word_freq[:5], 1):
+        # --- トレンドキーワード TOP5 ---
+        st.subheader("🔑 トレンド・キーワード TOP5")
+        if sns_results:
+            kw_col1, kw_col2 = st.columns(2)
+            with kw_col1:
+                st.markdown("**📰 メディア**")
+                for i, (word, count) in enumerate(
+                    extract_keywords(news_titles, keyword)[:5], 1
+                ):
                     st.markdown(f"**{i}.** {word}（{count}回）")
+            with kw_col2:
+                st.markdown("**💬 SNS**")
+                for i, (word, count) in enumerate(
+                    extract_keywords(sns_titles, keyword)[:5], 1
+                ):
+                    st.markdown(f"**{i}.** {word}（{count}回）")
+        else:
+            for i, (word, count) in enumerate(
+                extract_keywords(news_titles, keyword)[:5], 1
+            ):
+                st.markdown(f"**{i}.** {word}（{count}回）")
 
-            # 個別記事表示
-            st.subheader("📰 記事一覧")
-            for r in results:
-                emoji = {"positive": "🟢", "negative": "🔴", "neutral": "⚪"}[
-                    r["label"]
-                ]
-                st.markdown(
-                    f"{emoji} [{r['title']}]({r['url']}) "
-                    f"(positive: {r['positive']:.1%})"
-                )
+        # --- 記事一覧 ---
+        st.subheader("📰 記事一覧")
+        if sns_results:
+            tab_news, tab_sns = st.tabs(["📰 メディア", "💬 SNS"])
+            with tab_news:
+                render_article_list(news_results)
+            with tab_sns:
+                render_article_list(sns_results, show_author=True)
+        else:
+            render_article_list(news_results)
 
-            # 履歴保存
-            save_history(keyword, results)
-            st.info("💾 分析結果を履歴に保存しました。")
+        # --- 履歴保存 ---
+        save_history(keyword, news_results, sns_results)
+        st.info("💾 分析結果を履歴に保存しました。")
 
 
 if __name__ == "__main__":

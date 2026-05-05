@@ -1,0 +1,1 @@
+"""TrendInsight AI ソースモジュール."""
