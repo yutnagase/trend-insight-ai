@@ -1,6 +1,5 @@
 """感情分析モジュール - BERTモデル+辞書補正による感情スコアリング."""
 
-import streamlit as st
 from janome.tokenizer import Tokenizer
 from transformers import pipeline
 
@@ -16,26 +15,65 @@ NEGATIVE_BOOST_WORDS: set[str] = {
 NEGATIVE_BOOST_WEIGHT: float = 0.3
 
 
-@st.cache_resource
-def load_sentiment_model():
-    """感情分析モデルを起動時に一度だけロードする.
+class SentimentAnalyzer:
+    """BERT感情分析 + 辞書補正を行うクラス.
 
-    Returns:
-        transformers pipelineオブジェクト.
+    インスタンス生成時にモデルをロードし、以降は analyze() で推論する。
     """
-    return pipeline(
-        "sentiment-analysis",
-        model=MODEL_NAME,
-        tokenizer=MODEL_NAME,
-        device=-1,
-        truncation=True,
-        max_length=512,
-    )
+
+    def __init__(self) -> None:
+        self._classifier = pipeline(
+            "sentiment-analysis",
+            model=MODEL_NAME,
+            tokenizer=MODEL_NAME,
+            device=-1,
+            truncation=True,
+            max_length=512,
+        )
+
+    def analyze(self, text: str) -> dict[str, float | str]:
+        """テキストの感情分析をBERTモデル+辞書補正で実施する.
+
+        Args:
+            text: 分析対象のテキスト.
+
+        Returns:
+            positive/negativeスコアとラベルを含む辞書.
+        """
+        result = self._classifier(text)[0]
+        label = result["label"].upper()
+        score = result["score"]
+
+        if label == "POSITIVE":
+            pos_score = score
+            neg_score = 1.0 - score
+        elif label == "NEGATIVE":
+            neg_score = score
+            pos_score = 1.0 - score
+        else:  # NEUTRAL
+            pos_score = 0.5
+            neg_score = 0.5
+
+        # ネガティブ辞書による補正
+        boost = sum(1 for w in NEGATIVE_BOOST_WORDS if w in text)
+        if boost > 0:
+            adjustment = min(boost * NEGATIVE_BOOST_WEIGHT, 0.5)
+            neg_score = min(neg_score + adjustment, 1.0)
+            pos_score = max(pos_score - adjustment, 0.0)
+
+        # 最終ラベル判定（3段階）
+        if abs(pos_score - neg_score) < 0.1:
+            final_label = "neutral"
+        elif pos_score > neg_score:
+            final_label = "positive"
+        else:
+            final_label = "negative"
+
+        return {"positive": pos_score, "negative": neg_score, "label": final_label}
 
 
-@st.cache_resource
-def load_tokenizer() -> Tokenizer:
-    """janomeトークナイザーを起動時に一度だけロードする.
+def create_tokenizer() -> Tokenizer:
+    """Janomeトークナイザーを生成する.
 
     Returns:
         Tokenizerインスタンス.
@@ -43,53 +81,11 @@ def load_tokenizer() -> Tokenizer:
     return Tokenizer()
 
 
-def analyze_sentiment(title: str) -> dict[str, float | str]:
-    """テキストの感情分析をBERTモデル+辞書補正で実施する.
-
-    Args:
-        title: 分析対象のテキスト.
-
-    Returns:
-        positive/negativeスコアとラベルを含む辞書.
-    """
-    classifier = load_sentiment_model()
-    result = classifier(title)[0]
-    label = result["label"].upper()
-    score = result["score"]
-
-    # モデルが3クラス（POSITIVE/NEGATIVE/NEUTRAL）を出力
-    if label == "POSITIVE":
-        pos_score = score
-        neg_score = 1.0 - score
-    elif label == "NEGATIVE":
-        neg_score = score
-        pos_score = 1.0 - score
-    else:  # NEUTRAL
-        pos_score = 0.5
-        neg_score = 0.5
-
-    # ネガティブ辞書による補正（強ネガティブ語が存在する場合のみ）
-    boost = sum(1 for w in NEGATIVE_BOOST_WORDS if w in title)
-    if boost > 0:
-        adjustment = min(boost * NEGATIVE_BOOST_WEIGHT, 0.5)
-        neg_score = min(neg_score + adjustment, 1.0)
-        pos_score = max(pos_score - adjustment, 0.0)
-
-    # 最終ラベル判定（3段階）
-    if abs(pos_score - neg_score) < 0.1:
-        final_label = "neutral"
-    elif pos_score > neg_score:
-        final_label = "positive"
-    else:
-        final_label = "negative"
-    return {"positive": pos_score, "negative": neg_score, "label": final_label}
-
-
 def compute_sentiment_stats(results: list[dict]) -> dict[str, float]:
     """分析結果リストからラベル別の比率を算出する.
 
     Args:
-        results: analyze_sentimentの結果を含む辞書のリスト.
+        results: analyze()の結果を含む辞書のリスト.
 
     Returns:
         positive/neutral/negativeの比率を含む辞書.
