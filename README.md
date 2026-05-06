@@ -20,6 +20,20 @@ TrendInsight AIは、任意のキーワードに対して以下の3つの情報�
 
 すべての処理はローカルで完結し、外部APIへのデータ送信は行いません。
 
+## 画面イメージ
+
+### Topからワードクラウドまで
+
+![screen1](docs/images/screen1.png)
+
+### トレンド・キーワード TOP5 から記事・投稿一覧まで
+
+![screen2](docs/images/screen2.png)
+
+### AIによる総合マーケット・インサイト
+
+![screen3](docs/images/screen3.png)
+
 ## Key Features
 
 - **多方面データを使用した感情分析**
@@ -105,14 +119,14 @@ streamlit run app.py
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|------------|
-| UI | Streamlit |
-| Sentiment Analysis | transformers + `koheiduck/bert-japanese-finetuned-sentiment` |
-| Morphological Analysis | Janome |
-| Word Cloud | wordcloud |
-| LLM Inference | llama-cpp-python + ELYZA-JP-8B (Q4_K_M GGUF) |
-| Data Collection | feedparser / atproto / requests |
+| Layer                  | Technology                                                   |
+| ---------------------- | ------------------------------------------------------------ |
+| UI                     | Streamlit                                                    |
+| Sentiment Analysis     | transformers + `koheiduck/bert-japanese-finetuned-sentiment` |
+| Morphological Analysis | Janome                                                       |
+| Word Cloud             | wordcloud                                                    |
+| LLM Inference          | llama-cpp-python + ELYZA-JP-8B (Q4_K_M GGUF)                 |
+| Data Collection        | feedparser / atproto / requests                              |
 
 各技術の詳細は [docs/](docs/) を参照してください。
 
