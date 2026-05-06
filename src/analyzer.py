@@ -1,6 +1,5 @@
 """感情分析モジュール - BERTモデル+辞書補正による感情スコアリング."""
 
-from janome.tokenizer import Tokenizer
 from transformers import pipeline
 
 MODEL_NAME = "koheiduck/bert-japanese-finetuned-sentiment"
@@ -70,15 +69,6 @@ class SentimentAnalyzer:
             final_label = "negative"
 
         return {"positive": pos_score, "negative": neg_score, "label": final_label}
-
-
-def create_tokenizer() -> Tokenizer:
-    """Janomeトークナイザーを生成する.
-
-    Returns:
-        Tokenizerインスタンス.
-    """
-    return Tokenizer()
 
 
 def compute_sentiment_stats(results: list[dict]) -> dict[str, float]:
