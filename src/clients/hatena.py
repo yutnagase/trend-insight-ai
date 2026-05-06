@@ -1,5 +1,6 @@
 """はてなブックマーククライアント."""
 
+import logging
 import time
 import urllib.parse
 
@@ -9,9 +10,12 @@ import requests
 from src.clients.base import BaseClient, ClientError
 from src.models.article import Article
 
+logger = logging.getLogger(__name__)
+
 DEFAULT_TOP_N = 5
 ENTRY_API = "https://b.hatena.ne.jp/entry/json/"
 SEARCH_RSS = "https://b.hatena.ne.jp/search/text"
+REQUEST_TIMEOUT = 10
 
 
 class HatenaClient(BaseClient):
@@ -67,13 +71,20 @@ class HatenaClient(BaseClient):
     def fetch_with_entries(self, keyword: str) -> tuple[list[Article], list[dict]]:
         """コメントArticleリストと元記事情報の両方を返す（UI表示用）.
 
+        safe_fetch同様、例外発生時は空リストを返しログに記録する。
+
         Args:
             keyword: 検索キーワード.
 
         Returns:
             (コメントArticleリスト, 記事ごとのメタ情報リスト).
         """
-        entries = self._search_entries(keyword)
+        try:
+            entries = self._search_entries(keyword)
+        except ClientError as e:
+            logger.warning("%s fetch_with_entries failed for '%s': %s", self.source_name, keyword, e)
+            return [], []
+
         if not entries:
             return [], []
 
@@ -113,9 +124,13 @@ class HatenaClient(BaseClient):
         )
 
         try:
-            feed = feedparser.parse(search_url)
+            resp = requests.get(search_url, timeout=REQUEST_TIMEOUT)
+            resp.raise_for_status()
+            feed = feedparser.parse(resp.text)
+        except requests.RequestException as e:
+            raise ClientError(f"Hatena search request failed: {e}") from e
         except Exception as e:
-            raise ClientError(f"Hatena search RSS failed: {e}") from e
+            raise ClientError(f"Hatena search RSS parse failed: {e}") from e
 
         entries: list[dict] = []
         for entry in feed.entries:

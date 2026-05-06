@@ -4,11 +4,13 @@ import urllib.parse
 from datetime import datetime
 
 import feedparser
+import requests
 
 from src.clients.base import BaseClient, ClientError
 from src.models.article import Article
 
 DEFAULT_FETCH_COUNT = 30
+REQUEST_TIMEOUT = 15
 
 
 class GoogleNewsClient(BaseClient):
@@ -41,7 +43,11 @@ class GoogleNewsClient(BaseClient):
         )
 
         try:
-            feed = feedparser.parse(url)
+            resp = requests.get(url, timeout=REQUEST_TIMEOUT)
+            resp.raise_for_status()
+            feed = feedparser.parse(resp.text)
+        except requests.RequestException as e:
+            raise ClientError(f"Google News RSS request failed: {e}") from e
         except Exception as e:
             raise ClientError(f"Google News RSS parse failed: {e}") from e
 
