@@ -51,20 +51,19 @@ TrendInsight AIは、任意のキーワードに対して以下の3つの情報�
 
 ```
 ┌─────────────────────────────────────────────────┐
-│                  Streamlit UI                     │
+│                  Streamlit UI (app.py)            │
 ├─────────────────────────────────────────────────┤
-│  src/collector.py    │  src/analyzer.py          │
-│  - Google News RSS   │  - BERT Sentiment (3cls)  │
-│  - BlueSky (atproto) │  - Negative Dict Boost    │
-│  - Hatena Bookmark   │  - Janome Tokenizer       │
-├──────────────────────┼──────────────────────────┤
-│  src/reporter.py                                 │
-│  - ELYZA-8B GGUF (llama-cpp-python)             │
-│  - Structured Prompt → 3-5 line Insight          │
+│  src/clients/            │  src/analyzer.py      │
+│  - GoogleNewsClient      │  - SentimentAnalyzer  │
+│  - BlueskyClient         │  - BERT 3-class       │
+│  - HatenaClient          │  - Dictionary Boost   │
+├──────────────────────────┼───────────────────────┤
+│  src/services/           │  src/reporter.py      │
+│  - text_processor        │  - ELYZA-8B GGUF     │
+│  - wordcloud_generator   │  - Structured Prompt  │
+│  - insight / history     │                       │
 ├─────────────────────────────────────────────────┤
-│  data/                                           │
-│  - analysis_history.json                         │
-│  - images/wordcloud_*.png                        │
+│  src/models/article.py (Pydantic)                │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -82,10 +81,17 @@ TrendInsight AIは、任意のキーワードに対して以下の3つの情報�
 git clone https://github.com/YOUR_USERNAME/trend-insight-ai.git
 cd trend-insight-ai
 
+# uv (推奨)
+uv sync
+
+# pip の場合
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
-
 pip install -r requirements.txt
+
+# pipからuvに切り替える場合
+rm -rf .venv
+uv sync
 ```
 
 ### Configuration
@@ -112,6 +118,10 @@ BLUESKY_APP_PASSWORD=your-app-password
 ### Run
 
 ```bash
+# uv
+uv run streamlit run app.py
+
+# pip
 streamlit run app.py
 ```
 
@@ -134,18 +144,28 @@ streamlit run app.py
 
 ```
 trend_insight_ai/
-├── app.py                 # Main Streamlit application
+├── app.py                 # Streamlit UI + main flow
 ├── src/
-│   ├── analyzer.py        # Sentiment analysis (BERT + dictionary boost)
-│   ├── collector.py       # Data collection (News, BlueSky, Hatena)
-│   └── reporter.py        # LLM-based insight generation
+│   ├── analyzer.py        # SentimentAnalyzer (BERT + dictionary boost)
+│   ├── reporter.py        # LLM-based insight generation
+│   ├── clients/           # Data collection clients
+│   │   ├── base.py        # BaseClient abstract class
+│   │   ├── google_news.py
+│   │   ├── bluesky.py
+│   │   └── hatena.py
+│   ├── models/
+│   │   └── article.py     # Pydantic Article model
+│   └── services/
+│       ├── history.py     # Analysis history persistence
+│       ├── insight.py     # Rule-based gap detection
+│       ├── text_processor.py  # Keyword extraction
+│       └── wordcloud_generator.py
+├── tests/                 # pytest test suite
 ├── data/                  # Auto-generated (gitignored)
-│   ├── analysis_history.json
-│   └── images/
 ├── models/                # Auto-downloaded GGUF (gitignored)
-├── .env.example
-├── .gitignore
-└── requirements.txt
+├── pyproject.toml         # Dependency management (uv)
+├── uv.lock                # Reproducible lock file
+└── .env.example
 ```
 
 ## License
