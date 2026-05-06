@@ -136,4 +136,4 @@ trend_insight_ai/
 
 ## License
 
-MIT
+[MIT](LICENSE)
