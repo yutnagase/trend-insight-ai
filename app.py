@@ -10,12 +10,25 @@ import streamlit as st
 from dotenv import load_dotenv
 from wordcloud import WordCloud
 
-from src.analyzer import analyze_sentiment, compute_sentiment_stats, load_tokenizer
+from src.analyzer import SentimentAnalyzer, compute_sentiment_stats, create_tokenizer
 from src.clients import BlueskyClient, GoogleNewsClient, HatenaClient
 from src.models.article import Article
 from src.reporter import generate_report
 
 load_dotenv()
+
+
+@st.cache_resource
+def _get_analyzer() -> SentimentAnalyzer:
+    """SentimentAnalyzerをStreamlitキャッシュで保持する."""
+    return SentimentAnalyzer()
+
+
+@st.cache_resource
+def _get_tokenizer():
+    """Janomeトークナイザーをキャッシュで保持する."""
+    return create_tokenizer()
+
 
 HISTORY_PATH = Path("data/analysis_history.json")
 IMAGES_DIR = Path("data/images")
@@ -43,7 +56,7 @@ def extract_keywords(
     Returns:
         (単語, 出現回数)のリスト（頻出順）.
     """
-    tok = load_tokenizer()
+    tok = _get_tokenizer()
     stop = STOP_WORDS | {search_keyword}
     words: list[str] = []
     for title in titles:
@@ -421,6 +434,8 @@ def main() -> None:
             return
 
         # --- 感情分析 ---
+        analyzer = _get_analyzer()
+
         def analyze_articles(articles: list[Article], label: str) -> list[dict]:
             """Articleリストに感情分析を適用し、dict化して返す."""
             results: list[dict] = []
@@ -428,7 +443,7 @@ def main() -> None:
                 return results
             progress = st.progress(0, text=f"{label}を分析中...")
             for i, article in enumerate(articles):
-                scores = analyze_sentiment(article.title)
+                scores = analyzer.analyze(article.title)
                 results.append({**article.model_dump(), **scores})
                 progress.progress((i + 1) / len(articles))
             progress.empty()
