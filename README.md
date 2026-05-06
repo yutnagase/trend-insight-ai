@@ -105,16 +105,16 @@ streamlit run app.py
 
 ## Tech Stack
 
-| Layer                  | Technology                                                   |
-| ---------------------- | ------------------------------------------------------------ |
-| UI                     | Streamlit                                                    |
-| Sentiment Analysis     | transformers + `koheiduck/bert-japanese-finetuned-sentiment` |
-| Morphological Analysis | Janome                                                       |
-| Word Cloud             | wordcloud                                                    |
-| LLM Inference          | llama-cpp-python + ELYZA-JP-8B (Q4_K_M GGUF)                 |
-| SNS Collection         | atproto (BlueSky AT Protocol SDK)                            |
-| News Collection        | feedparser (Google News RSS)                                 |
-| Bookmark Collection    | requests (Hatena Bookmark API)                               |
+| Layer | Technology |
+|-------|------------|
+| UI | Streamlit |
+| Sentiment Analysis | transformers + `koheiduck/bert-japanese-finetuned-sentiment` |
+| Morphological Analysis | Janome |
+| Word Cloud | wordcloud |
+| LLM Inference | llama-cpp-python + ELYZA-JP-8B (Q4_K_M GGUF) |
+| Data Collection | feedparser / atproto / requests |
+
+各技術の詳細は [docs/](docs/) を参照してください。
 
 ## Project Structure
 
