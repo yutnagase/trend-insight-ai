@@ -17,6 +17,7 @@ from src.reporter import generate_report
 load_dotenv()
 
 HISTORY_PATH = Path("data/analysis_history.json")
+IMAGES_DIR = Path("data/images")
 FONT_PATH = "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf"
 
 # ストップワード（助詞・助動詞・不要語）
@@ -75,6 +76,25 @@ def generate_wordcloud(word_freq: list[tuple[str, int]]) -> WordCloud | None:
     return wc
 
 
+def save_wordcloud_image(wc: WordCloud, timestamp: str, source: str) -> str:
+    """ワードクラウド画像をタイムスタンプ付きで保存する.
+
+    Args:
+        wc: WordCloudオブジェクト.
+        timestamp: ISO形式のタイムスタンプ.
+        source: ソース名（news, bsky, hatena）.
+
+    Returns:
+        保存先のファイルパス.
+    """
+    IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+    ts = timestamp.replace(":", "").replace("-", "").replace("T", "_")[:15]
+    filename = f"wordcloud_{source}_{ts}.png"
+    filepath = IMAGES_DIR / filename
+    wc.to_file(str(filepath))
+    return str(filepath)
+
+
 def generate_insight(
     news_stats: dict[str, float],
     bsky_stats: dict[str, float] | None = None,
@@ -107,7 +127,6 @@ def generate_insight(
 
     summary = "、".join(parts) + " な論調です。"
 
-    # ギャップ検出
     all_dominants = [dominant(news_stats)]
     if bsky_stats:
         all_dominants.append(dominant(bsky_stats))
@@ -124,6 +143,8 @@ def save_history(
     news_results: list[dict],
     sns_results: list[dict],
     hatena_results: list[dict],
+    wordcloud_images: dict[str, str],
+    ai_report: str,
 ) -> None:
     """分析結果を履歴JSONに追記保存する.
 
@@ -132,6 +153,8 @@ def save_history(
         news_results: メディア分析結果.
         sns_results: SNS分析結果.
         hatena_results: はてブ分析結果.
+        wordcloud_images: ソース名→画像パスのマッピング.
+        ai_report: AI総評レポートテキスト.
     """
     HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
     history: list[dict] = []
@@ -143,10 +166,24 @@ def save_history(
         "news_results": news_results,
         "sns_results": sns_results,
         "hatena_results": hatena_results,
+        "wordcloud_images": wordcloud_images,
+        "ai_report": ai_report,
     })
     HISTORY_PATH.write_text(
         json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8"
     )
+
+
+def load_history() -> list[dict]:
+    """履歴JSONを読み込む.
+
+    Returns:
+        履歴データのリスト（新しい順）.
+    """
+    if not HISTORY_PATH.exists():
+        return []
+    history = json.loads(HISTORY_PATH.read_text(encoding="utf-8"))
+    return list(reversed(history))
 
 
 def render_sentiment_metrics(stats: dict[str, float]) -> None:
@@ -177,8 +214,23 @@ def render_article_list(results: list[dict], show_author: bool = False) -> None:
         )
 
 
-def render_hatena_tab(hatena_data: list[dict], hatena_results: list[dict]) -> None:
-    """はてブタブ内に記事ごとのexpander形式でコメントを表示する.
+def render_hatena_tab(hatena_results: list[dict]) -> None:
+    """はてブタブ内にコメントを表示する（過去データ用・expander無し）.
+
+    Args:
+        hatena_results: 感情分析済みコメントリスト.
+    """
+    st.caption("出典: はてなブックマーク (https://b.hatena.ne.jp)")
+    for r in hatena_results:
+        emoji = {"positive": "🟢", "negative": "🔴", "neutral": "⚪"}[r["label"]]
+        st.markdown(
+            f"{emoji} {r['title'][:100]} "
+            f"({r.get('author', '')}) (positive: {r['positive']:.1%})"
+        )
+
+
+def render_hatena_tab_live(hatena_data: list[dict], hatena_results: list[dict]) -> None:
+    """はてブタブ内に記事ごとのexpander形式でコメントを表示する（ライブ分析用）.
 
     Args:
         hatena_data: 記事ごとのコメントデータ.
@@ -186,13 +238,11 @@ def render_hatena_tab(hatena_data: list[dict], hatena_results: list[dict]) -> No
     """
     st.caption("出典: はてなブックマーク (https://b.hatena.ne.jp)")
 
-    # コメントを記事URLごとにグループ化
     comments_by_url: dict[str, list[dict]] = {}
     for r in hatena_results:
         comments_by_url.setdefault(r["url"], []).append(r)
 
     for article_data in hatena_data:
-        # はてなブックマークのエントリページURLを生成
         entry_url = article_data["url"].replace("https://", "").replace("http://", "")
         hatena_entry_url = f"https://b.hatena.ne.jp/entry/s/{entry_url}"
 
@@ -202,7 +252,6 @@ def render_hatena_tab(hatena_data: list[dict], hatena_results: list[dict]) -> No
         ):
             st.markdown(f"▶ [はてなブックマークで見る]({hatena_entry_url})")
             st.markdown("---")
-            # 該当記事のコメントを感情スコア付きで表示
             article_comments = comments_by_url.get(article_data["url"], [])
             for c in article_comments:
                 emoji = {"positive": "🟢", "negative": "🔴", "neutral": "⚪"}[c["label"]]
@@ -212,15 +261,99 @@ def render_hatena_tab(hatena_data: list[dict], hatena_results: list[dict]) -> No
                 )
 
 
+def render_archived_analysis(entry: dict) -> None:
+    """過去の分析結果を表示する.
+
+    Args:
+        entry: 履歴エントリ.
+    """
+    keyword = entry["keyword"]
+    ts = datetime.fromisoformat(entry["timestamp"])
+    st.warning(f"📂 過去の分析結果を表示中：{ts.strftime('%Y/%m/%d %H:%M')} [{keyword}]")
+
+    news_results = entry.get("news_results", [])
+    sns_results = entry.get("sns_results", [])
+    hatena_results = entry.get("hatena_results", [])
+    wordcloud_images = entry.get("wordcloud_images", {})
+    ai_report = entry.get("ai_report", "")
+
+    # 感情スコア表示
+    news_stats = compute_sentiment_stats(news_results)
+    bsky_stats = compute_sentiment_stats(sns_results) if sns_results else None
+    hatena_stats = compute_sentiment_stats(hatena_results) if hatena_results else None
+
+    st.subheader("🌡️ 世の中の空気感")
+
+    active_sources: list[tuple[str, dict[str, float]]] = [("📰 メディア", news_stats)]
+    if bsky_stats:
+        active_sources.append(("💬 BlueSky", bsky_stats))
+    if hatena_stats:
+        active_sources.append(("📝 はてブ", hatena_stats))
+
+    cols = st.columns(len(active_sources))
+    for col, (source_name, stats) in zip(cols, active_sources):
+        with col:
+            st.markdown(f"#### {source_name}")
+            render_sentiment_metrics(stats)
+
+    st.divider()
+    st.markdown(generate_insight(news_stats, bsky_stats, hatena_stats))
+
+    # ワードクラウド画像表示
+    st.subheader("☁️ ワードクラウド")
+    if wordcloud_images:
+        source_labels = {"news": "📰 メディア", "bsky": "💬 BlueSky", "hatena": "📝 はてブ"}
+        available = [(k, v) for k, v in wordcloud_images.items() if Path(v).exists()]
+        if available:
+            wc_cols = st.columns(len(available))
+            for col, (source, path) in zip(wc_cols, available):
+                with col:
+                    st.markdown(f"**{source_labels.get(source, source)}**")
+                    st.image(path, use_container_width=True)
+        else:
+            st.info("ワードクラウド画像が見つかりません（古い履歴データの可能性があります）。")
+    else:
+        st.info("この分析にはワードクラウド画像が保存されていません。")
+
+    # AI総評レポート
+    if ai_report:
+        st.divider()
+        st.subheader("🤖 AIによる総合マーケット・インサイト")
+        st.markdown(ai_report)
+
+    # 記事一覧
+    st.subheader("📰 記事・投稿一覧")
+    tab_names: list[str] = ["📰 メディア"]
+    tab_data_list: list[str] = ["news"]
+    if sns_results:
+        tab_names.append("💬 BlueSky")
+        tab_data_list.append("bsky")
+    if hatena_results:
+        tab_names.append("📝 はてブ（第三者のツッコミ）")
+        tab_data_list.append("hatena")
+
+    tabs = st.tabs(tab_names)
+    for tab, data_type in zip(tabs, tab_data_list):
+        with tab:
+            if data_type == "news":
+                render_article_list(news_results)
+            elif data_type == "bsky":
+                render_article_list(sns_results, show_author=True)
+            elif data_type == "hatena":
+                render_hatena_tab(hatena_results)
+
+
 def main() -> None:
     """Streamlit UIのメインエントリポイント."""
     st.set_page_config(page_title="TrendInsight AI", page_icon="📊", layout="wide")
     st.title("📊 TrendInsight AI")
     st.caption("メディア・SNS・はてブの多角的視点から世の中の空気感を読み取る")
 
-    # サイドバー: BlueSky認証設定
+    # サイドバー
     with st.sidebar:
         st.header("⚙️ 設定")
+
+        # BlueSky認証
         st.subheader("BlueSky認証")
         bsky_handle = st.text_input(
             "ハンドル",
@@ -234,10 +367,29 @@ def main() -> None:
         )
         st.markdown("[アプリパスワード生成](https://bsky.app/settings/app-passwords)")
 
-    # メイン: キーワード入力
-    keyword = st.text_input("分析キーワードを入力", placeholder="例: 生成AI")
+        # 過去の分析参照
+        st.divider()
+        st.subheader("📂 過去の分析を参照")
+        history = load_history()
+        history_options = ["（最新の分析）"] + [
+            f"{datetime.fromisoformat(h['timestamp']).strftime('%Y-%m-%d %H:%M')} [{h['keyword']}]"
+            for h in history
+        ]
+        selected_history = st.selectbox(
+            "履歴を選択", history_options, index=0
+        )
 
-    if st.button("分析開始", disabled=not keyword):
+    # メイン: キーワード入力（常に表示）
+    keyword = st.text_input("分析キーワードを入力", placeholder="例: 生成AI")
+    run_clicked = st.button("分析開始", disabled=not keyword)
+
+    # 過去データ表示モード（分析開始が押されていない場合のみ）
+    if selected_history != "（最新の分析）" and not run_clicked:
+        selected_idx = history_options.index(selected_history) - 1
+        render_archived_analysis(history[selected_idx])
+        st.stop()
+
+    if run_clicked:
         # --- データ収集 ---
         with st.spinner("📰 ニュース記事を収集中..."):
             news_articles = fetch_news_articles(keyword)
@@ -254,7 +406,6 @@ def main() -> None:
         else:
             st.info("💡 サイドバーでBlueSky認証を設定すると、SNSの声も分析できます。")
 
-        # はてなブックマークコメント取得（キーワードで直接検索）
         hatena_data: list[dict] = []
         with st.spinner("📝 はてなブックマークのコメントを収集中..."):
             try:
@@ -288,7 +439,6 @@ def main() -> None:
                 progress.progress((i + 1) / len(sns_articles))
             progress.empty()
 
-        # はてブコメントの感情分析
         all_comments: list[dict[str, str]] = []
         for article_data in hatena_data:
             for comment in article_data["comments"]:
@@ -313,7 +463,6 @@ def main() -> None:
 
         st.subheader("🌡️ 世の中の空気感")
 
-        # アクティブソースに応じてカラム構成
         active_sources: list[tuple[str, dict[str, float]]] = [
             ("📰 メディア", news_stats)
         ]
@@ -328,7 +477,6 @@ def main() -> None:
                 st.markdown(f"#### {source_name}")
                 render_sentiment_metrics(stats)
 
-        # インサイト表示
         st.divider()
         st.markdown(generate_insight(news_stats, bsky_stats, hatena_stats))
 
@@ -338,52 +486,35 @@ def main() -> None:
         bsky_titles = [r["title"] for r in sns_results]
         hatena_texts = [r["title"] for r in hatena_results]
 
-        source_titles = [("📰 メディア", news_titles)]
+        source_titles = [("news", "📰 メディア", news_titles)]
         if sns_results:
-            source_titles.append(("💬 BlueSky", bsky_titles))
+            source_titles.append(("bsky", "💬 BlueSky", bsky_titles))
         if hatena_results:
-            source_titles.append(("📝 はてブ", hatena_texts))
+            source_titles.append(("hatena", "📝 はてブ", hatena_texts))
+
+        timestamp = datetime.now().isoformat()
+        wordcloud_images: dict[str, str] = {}
 
         wc_cols = st.columns(len(source_titles))
-        for col, (source_name, titles) in zip(wc_cols, source_titles):
+        for col, (source_key, source_name, titles) in zip(wc_cols, source_titles):
             with col:
                 st.markdown(f"**{source_name}**")
                 wc = generate_wordcloud(extract_keywords(titles, keyword))
                 if wc:
                     st.image(wc.to_array(), use_container_width=True)
+                    path = save_wordcloud_image(wc, timestamp, source_key)
+                    wordcloud_images[source_key] = path
 
         # --- トレンドキーワード TOP5 ---
         st.subheader("🔑 トレンド・キーワード TOP5")
         kw_cols = st.columns(len(source_titles))
-        for col, (source_name, titles) in zip(kw_cols, source_titles):
+        for col, (source_key, source_name, titles) in zip(kw_cols, source_titles):
             with col:
                 st.markdown(f"**{source_name}**")
                 for i, (word, count) in enumerate(
                     extract_keywords(titles, keyword)[:5], 1
                 ):
                     st.markdown(f"**{i}.** {word}（{count}回）")
-
-        # --- AI総評レポート ---
-        st.divider()
-        st.subheader("🤖 AIによる総合マーケット・インサイト")
-        with st.spinner("🧠 AIが総評レポートを生成中（初回はモデルダウンロードのため数分かかります）..."):
-            try:
-                news_kw = extract_keywords(news_titles, keyword)
-                bsky_kw = extract_keywords(bsky_titles, keyword) if sns_results else None
-                hatena_kw = extract_keywords(hatena_texts, keyword) if hatena_results else None
-
-                report = generate_report(
-                    keyword=keyword,
-                    news_stats=news_stats,
-                    news_keywords=news_kw,
-                    bsky_stats=bsky_stats,
-                    bsky_keywords=bsky_kw,
-                    hatena_stats=hatena_stats,
-                    hatena_keywords=hatena_kw,
-                )
-                st.markdown(report)
-            except Exception as e:
-                st.warning(f"AI総評レポートの生成に失敗しました: {e}")
 
         # --- 記事・投稿一覧 ---
         st.subheader("📰 記事・投稿一覧")
@@ -404,10 +535,36 @@ def main() -> None:
                 elif data_type == "bsky":
                     render_article_list(sns_results, show_author=True)
                 elif data_type == "hatena":
-                    render_hatena_tab(hatena_data, hatena_results)
+                    render_hatena_tab_live(hatena_data, hatena_results)
+
+        # --- AI総評レポート ---
+        st.divider()
+        st.subheader("🤖 AIによる総合マーケット・インサイト")
+        ai_report = ""
+        with st.spinner("🧠 AIが総評レポートを生成中（初回はモデルダウンロードのため数分かかります）..."):
+            try:
+                news_kw = extract_keywords(news_titles, keyword)
+                bsky_kw = extract_keywords(bsky_titles, keyword) if sns_results else None
+                hatena_kw = extract_keywords(hatena_texts, keyword) if hatena_results else None
+
+                ai_report = generate_report(
+                    keyword=keyword,
+                    news_stats=news_stats,
+                    news_keywords=news_kw,
+                    bsky_stats=bsky_stats,
+                    bsky_keywords=bsky_kw,
+                    hatena_stats=hatena_stats,
+                    hatena_keywords=hatena_kw,
+                )
+                st.markdown(ai_report)
+            except Exception as e:
+                st.warning(f"AI総評レポートの生成に失敗しました: {e}")
 
         # --- 履歴保存 ---
-        save_history(keyword, news_results, sns_results, hatena_results)
+        save_history(
+            keyword, news_results, sns_results, hatena_results,
+            wordcloud_images, ai_report,
+        )
         st.info("💾 分析結果を履歴に保存しました。")
 
 
