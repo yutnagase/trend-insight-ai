@@ -171,7 +171,8 @@ def save_history(
         "ai_report": ai_report,
     })
     HISTORY_PATH.write_text(
-        json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8"
+        json.dumps(history, ensure_ascii=False, indent=2, default=str),
+        encoding="utf-8",
     )
 
 
