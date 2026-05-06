@@ -12,6 +12,7 @@ from wordcloud import WordCloud
 
 from src.analyzer import analyze_sentiment, compute_sentiment_stats, load_tokenizer
 from src.collector import HatenaCollector, fetch_bluesky_posts, fetch_news_articles
+from src.reporter import generate_report
 
 load_dotenv()
 
@@ -361,6 +362,28 @@ def main() -> None:
                     extract_keywords(titles, keyword)[:5], 1
                 ):
                     st.markdown(f"**{i}.** {word}（{count}回）")
+
+        # --- AI総評レポート ---
+        st.divider()
+        st.subheader("🤖 AIによる総合マーケット・インサイト")
+        with st.spinner("🧠 AIが総評レポートを生成中（初回はモデルダウンロードのため数分かかります）..."):
+            try:
+                news_kw = extract_keywords(news_titles, keyword)
+                bsky_kw = extract_keywords(bsky_titles, keyword) if sns_results else None
+                hatena_kw = extract_keywords(hatena_texts, keyword) if hatena_results else None
+
+                report = generate_report(
+                    keyword=keyword,
+                    news_stats=news_stats,
+                    news_keywords=news_kw,
+                    bsky_stats=bsky_stats,
+                    bsky_keywords=bsky_kw,
+                    hatena_stats=hatena_stats,
+                    hatena_keywords=hatena_kw,
+                )
+                st.markdown(report)
+            except Exception as e:
+                st.warning(f"AI総評レポートの生成に失敗しました: {e}")
 
         # --- 記事・投稿一覧 ---
         st.subheader("📰 記事・投稿一覧")

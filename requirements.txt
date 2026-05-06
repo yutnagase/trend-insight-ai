@@ -10,3 +10,5 @@ unidic-lite>=1.0.8
 atproto>=0.0.46
 python-dotenv>=1.0.0
 requests>=2.28.0
+llama-cpp-python>=0.2.0
+huggingface-hub>=0.20.0

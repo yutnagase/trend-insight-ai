@@ -20,6 +20,9 @@ venv/
 # Data (履歴ファイルは各環境で生成)
 data/
 
+# Models (LLMモデルは各環境でダウンロード)
+models/
+
 # Environment variables
 .env
 
