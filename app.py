@@ -11,7 +11,8 @@ from dotenv import load_dotenv
 from wordcloud import WordCloud
 
 from src.analyzer import analyze_sentiment, compute_sentiment_stats, load_tokenizer
-from src.collector import HatenaCollector, fetch_bluesky_posts, fetch_news_articles
+from src.clients import BlueskyClient, GoogleNewsClient, HatenaClient
+from src.models.article import Article
 from src.reporter import generate_report
 
 load_dotenv()
@@ -391,70 +392,50 @@ def main() -> None:
 
     if run_clicked:
         # --- データ収集 ---
-        with st.spinner("📰 ニュース記事を収集中..."):
-            news_articles = fetch_news_articles(keyword)
+        news_client = GoogleNewsClient()
+        bsky_client = BlueskyClient(handle=bsky_handle, app_password=bsky_password)
+        hatena_client = HatenaClient()
 
-        sns_articles: list[dict[str, str]] = []
-        if bsky_handle and bsky_password:
+        with st.spinner("📰 ニュース記事を収集中..."):
+            news_articles = news_client.safe_fetch(keyword)
+            if not news_articles:
+                st.warning("ニュース記事の取得に失敗しました。")
+
+        sns_articles: list[Article] = []
+        if bsky_client.is_configured:
             with st.spinner("💬 BlueSky投稿を収集中..."):
-                try:
-                    sns_articles = fetch_bluesky_posts(
-                        keyword, bsky_handle, bsky_password
-                    )
-                except Exception as e:
-                    st.warning(f"BlueSky取得エラー: {e}")
+                sns_articles = bsky_client.safe_fetch(keyword)
+                if not sns_articles:
+                    st.warning("BlueSky投稿の取得に失敗しました。")
         else:
             st.info("💡 サイドバーでBlueSky認証を設定すると、SNSの声も分析できます。")
 
-        hatena_data: list[dict] = []
+        hatena_articles: list[Article] = []
+        hatena_entry_data: list[dict] = []
         with st.spinner("📝 はてなブックマークのコメントを収集中..."):
-            try:
-                collector = HatenaCollector()
-                hatena_data = collector.fetch_comments_by_keyword(keyword)
-            except Exception as e:
-                st.warning(f"はてなブックマーク取得エラー: {e}")
+            hatena_articles, hatena_entry_data = hatena_client.fetch_with_entries(keyword)
 
         if not news_articles and not sns_articles:
             st.warning("記事・投稿が見つかりませんでした。")
             return
 
         # --- 感情分析 ---
-        news_results: list[dict] = []
-        sns_results: list[dict] = []
-        hatena_results: list[dict] = []
-
-        if news_articles:
-            progress = st.progress(0, text="メディア記事を分析中...")
-            for i, article in enumerate(news_articles):
-                scores = analyze_sentiment(article["title"])
-                news_results.append({**article, **scores})
-                progress.progress((i + 1) / len(news_articles))
+        def analyze_articles(articles: list[Article], label: str) -> list[dict]:
+            """Articleリストに感情分析を適用し、dict化して返す."""
+            results: list[dict] = []
+            if not articles:
+                return results
+            progress = st.progress(0, text=f"{label}を分析中...")
+            for i, article in enumerate(articles):
+                scores = analyze_sentiment(article.title)
+                results.append({**article.model_dump(), **scores})
+                progress.progress((i + 1) / len(articles))
             progress.empty()
+            return results
 
-        if sns_articles:
-            progress = st.progress(0, text="SNS投稿を分析中...")
-            for i, post in enumerate(sns_articles):
-                scores = analyze_sentiment(post["title"])
-                sns_results.append({**post, **scores})
-                progress.progress((i + 1) / len(sns_articles))
-            progress.empty()
-
-        all_comments: list[dict[str, str]] = []
-        for article_data in hatena_data:
-            for comment in article_data["comments"]:
-                all_comments.append({
-                    "title": comment["comment"],
-                    "url": article_data["url"],
-                    "author": comment["user"],
-                })
-
-        if all_comments:
-            progress = st.progress(0, text="はてブコメントを分析中...")
-            for i, comment in enumerate(all_comments):
-                scores = analyze_sentiment(comment["title"])
-                hatena_results.append({**comment, **scores})
-                progress.progress((i + 1) / len(all_comments))
-            progress.empty()
+        news_results = analyze_articles(news_articles, "メディア記事")
+        sns_results = analyze_articles(sns_articles, "SNS投稿")
+        hatena_results = analyze_articles(hatena_articles, "はてブコメント")
 
         # --- 感情スコア表示 ---
         news_stats = compute_sentiment_stats(news_results)
@@ -523,7 +504,7 @@ def main() -> None:
         if sns_results:
             tab_names.append("💬 BlueSky")
             tab_data_list.append("bsky")
-        if hatena_data:
+        if hatena_entry_data:
             tab_names.append("📝 はてブ（第三者のコメント）")
             tab_data_list.append("hatena")
 
@@ -535,7 +516,7 @@ def main() -> None:
                 elif data_type == "bsky":
                     render_article_list(sns_results, show_author=True)
                 elif data_type == "hatena":
-                    render_hatena_tab_live(hatena_data, hatena_results)
+                    render_hatena_tab_live(hatena_entry_data, hatena_results)
 
         # --- AI総評レポート ---
         st.divider()
