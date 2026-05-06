@@ -12,21 +12,26 @@ Googleニュース、BlueSky、はてなブックマークを横断し、メデ�
 
 TrendInsight AIは、任意のキーワードに対して以下の3つの情報源から「空気感」を抽出し、その温度差を可視化します。
 
-| ソース | 性質 | 取得方法 |
-|--------|------|----------|
-| Googleニュース | メディア報道（公式見解） | RSS |
-| BlueSky | SNSの生の声（感情） | AT Protocol |
-| はてなブックマーク | ナレッジ層の批判的視点 | 公開API |
+| ソース             | 性質                     | 取得方法    |
+| ------------------ | ------------------------ | ----------- |
+| Googleニュース     | メディア報道（公式見解） | RSS         |
+| BlueSky            | SNSの生の声（感情）      | AT Protocol |
+| はてなブックマーク | ナレッジ層の批判的視点   | 公開API     |
 
 すべての処理はローカルで完結し、外部APIへのデータ送信は行いません。
 
 ## Key Features
 
-- **3ソース感情分析** — BERT日本語モデル（3クラス: positive/neutral/negative）による高精度な感情スコアリング
-- **完全ローカルLLM推論** — ELYZA-8B Q4_K_M量子化モデルによる総評レポート生成（API費用ゼロ）
-- **ワードクラウド比較** — ソース別の頻出語を可視化し、論点の違いを一目で把握
-- **メディア vs 世論のギャップ検出** — ルールベース＋LLMによるインサイト自動生成
-- **アーカイブ参照** — 過去の分析結果をワードクラウド画像・AI総評付きで再閲覧
+- **多方面データを使用した感情分析**
+  - BERT日本語モデル（positive/neutral/negativeの3クラス分類）で、Googleニュース、BlueSky、はてなブックマークの論調を数値化
+- **LLMによる総評出力**
+  - ELYZA-8B Q4_K_M量子化モデルで総評レポートを生成。外部APIへの送信なし、費用ゼロ
+- **ワードクラウド**
+  - メディア・SNS・はてブそれぞれの頻出語をワードクラウドとして並べて表示し、論点の違いが一目でわかる
+- **メディアと世論のギャップ検出**
+  - ルールベース＋LLMで「報道と実感のズレ」を自動的に言語化
+- **過去の分析結果を再閲覧**
+  - ワードクラウド画像・AI総評付きで、いつでも過去分析結果を参照できる
 
 ## Architecture
 
@@ -54,8 +59,8 @@ TrendInsight AIは、任意のキーワードに対して以下の3つの情報�
 ### Prerequisites
 
 - Python 3.12+
-- RAM 12GB以上（LLM推論に必要）
-- ディスク空き容量 6GB以上（モデルファイル保存用）
+- RAM 12GB以上（LLM推論で使用）
+- ディスク空き容量 6GB以上（モデルファイルの保存先として必要）
 
 ### Installation
 
@@ -71,7 +76,7 @@ pip install -r requirements.txt
 
 ### Configuration
 
-BlueSky連携を有効にする場合、`.env`ファイルを作成します：
+BlueSky連携を有効にする場合、`.env`ファイルを作成します。
 
 ```bash
 cp .env.example .env
@@ -82,7 +87,8 @@ BLUESKY_HANDLE=yourname.bsky.social
 BLUESKY_APP_PASSWORD=your-app-password
 ```
 
-**BlueSky App Passwordの取得:**
+**BlueSky App Passwordの取得方法**
+
 1. https://bsky.app にログイン
 2. 設定 → アプリパスワード → 「アプリパスワードを追加」
 3. 生成されたパスワードを`.env`に記入
@@ -99,16 +105,16 @@ streamlit run app.py
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| UI | Streamlit |
-| Sentiment Analysis | transformers + `koheiduck/bert-japanese-finetuned-sentiment` |
-| Morphological Analysis | Janome |
-| Word Cloud | wordcloud |
-| LLM Inference | llama-cpp-python + ELYZA-JP-8B (Q4_K_M GGUF) |
-| SNS Collection | atproto (BlueSky AT Protocol SDK) |
-| News Collection | feedparser (Google News RSS) |
-| Bookmark Collection | requests (Hatena Bookmark API) |
+| Layer                  | Technology                                                   |
+| ---------------------- | ------------------------------------------------------------ |
+| UI                     | Streamlit                                                    |
+| Sentiment Analysis     | transformers + `koheiduck/bert-japanese-finetuned-sentiment` |
+| Morphological Analysis | Janome                                                       |
+| Word Cloud             | wordcloud                                                    |
+| LLM Inference          | llama-cpp-python + ELYZA-JP-8B (Q4_K_M GGUF)                 |
+| SNS Collection         | atproto (BlueSky AT Protocol SDK)                            |
+| News Collection        | feedparser (Google News RSS)                                 |
+| Bookmark Collection    | requests (Hatena Bookmark API)                               |
 
 ## Project Structure
 

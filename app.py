@@ -329,7 +329,7 @@ def render_archived_analysis(entry: dict) -> None:
         tab_names.append("💬 BlueSky")
         tab_data_list.append("bsky")
     if hatena_results:
-        tab_names.append("📝 はてブ（第三者のツッコミ）")
+        tab_names.append("📝 はてブ（第三者のコメント）")
         tab_data_list.append("hatena")
 
     tabs = st.tabs(tab_names)
@@ -524,7 +524,7 @@ def main() -> None:
             tab_names.append("💬 BlueSky")
             tab_data_list.append("bsky")
         if hatena_data:
-            tab_names.append("📝 はてブ（第三者のツッコミ）")
+            tab_names.append("📝 はてブ（第三者のコメント）")
             tab_data_list.append("hatena")
 
         tabs = st.tabs(tab_names)
