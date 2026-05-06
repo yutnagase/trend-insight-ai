@@ -176,44 +176,39 @@ def render_article_list(results: list[dict], show_author: bool = False) -> None:
         )
 
 
-def render_hatena_section(
-    hatena_data: list[dict], hatena_results: list[dict], keyword: str
-) -> None:
-    """はてなブックマークセクションを表示する.
+def render_hatena_tab(hatena_data: list[dict], hatena_results: list[dict]) -> None:
+    """はてブタブ内に記事ごとのexpander形式でコメントを表示する.
 
     Args:
         hatena_data: 記事ごとのコメントデータ.
         hatena_results: 感情分析済みコメントリスト.
-        keyword: 検索キーワード.
     """
-    st.subheader("💬 はてなブックマーク（第三者のツッコミ）")
     st.caption("出典: はてなブックマーク (https://b.hatena.ne.jp)")
 
-    # 感情スコア
-    hatena_stats = compute_sentiment_stats(hatena_results)
-    render_sentiment_metrics(hatena_stats)
+    # コメントを記事URLごとにグループ化
+    comments_by_url: dict[str, list[dict]] = {}
+    for r in hatena_results:
+        comments_by_url.setdefault(r["url"], []).append(r)
 
-    # ワードクラウド
-    hatena_texts = [r["title"] for r in hatena_results]
-    wc = generate_wordcloud(extract_keywords(hatena_texts, keyword))
-    if wc:
-        st.image(wc.to_array(), use_container_width=True)
-
-    # 記事ごとの象徴的コメント表示
-    st.markdown("---")
     for article_data in hatena_data:
+        # はてなブックマークのエントリページURLを生成
+        entry_url = article_data["url"].replace("https://", "").replace("http://", "")
+        hatena_entry_url = f"https://b.hatena.ne.jp/entry/s/{entry_url}"
+
         with st.expander(
-            f"📰 {article_data['title'][:60]}... "
+            f"📰 {article_data['title'][:60]} "
             f"（{article_data['bookmark_count']}ブックマーク）"
         ):
-            # 上位3件のコメントをピックアップ
-            for comment in article_data["comments"][:3]:
+            st.markdown(f"▶ [はてなブックマークで見る]({hatena_entry_url})")
+            st.markdown("---")
+            # 該当記事のコメントを感情スコア付きで表示
+            article_comments = comments_by_url.get(article_data["url"], [])
+            for c in article_comments:
+                emoji = {"positive": "🟢", "negative": "🔴", "neutral": "⚪"}[c["label"]]
                 st.markdown(
-                    f"> {comment['comment']}\n>\n"
-                    f"> — *{comment['user']}*"
+                    f"{emoji} {c['title'][:100]} "
+                    f"({c['author']}) (positive: {c['positive']:.1%})"
                 )
-
-    return hatena_stats
 
 
 def main() -> None:
@@ -367,37 +362,26 @@ def main() -> None:
                 ):
                     st.markdown(f"**{i}.** {word}（{count}回）")
 
-        # --- はてブ詳細セクション ---
-        if hatena_data:
-            st.divider()
-            st.subheader("📝 はてなブックマーク（第三者のツッコミ）")
-            st.caption("出典: はてなブックマーク (https://b.hatena.ne.jp)")
-            for article_data in hatena_data:
-                with st.expander(
-                    f"📰 {article_data['title'][:60]} "
-                    f"（{article_data['bookmark_count']}ブックマーク）"
-                ):
-                    for comment in article_data["comments"][:3]:
-                        st.markdown(
-                            f"> {comment['comment']}\n>\n"
-                            f"> — *{comment['user']}*"
-                        )
-
-        # --- 記事一覧 ---
+        # --- 記事・投稿一覧 ---
         st.subheader("📰 記事・投稿一覧")
         tab_names: list[str] = ["📰 メディア"]
-        tab_data: list[tuple[list[dict], bool]] = [(news_results, False)]
+        tab_data_list: list[str] = ["news"]
         if sns_results:
             tab_names.append("💬 BlueSky")
-            tab_data.append((sns_results, True))
-        if hatena_results:
-            tab_names.append("📝 はてブコメント")
-            tab_data.append((hatena_results, True))
+            tab_data_list.append("bsky")
+        if hatena_data:
+            tab_names.append("📝 はてブ（第三者のツッコミ）")
+            tab_data_list.append("hatena")
 
         tabs = st.tabs(tab_names)
-        for tab, (results, show_author) in zip(tabs, tab_data):
+        for tab, data_type in zip(tabs, tab_data_list):
             with tab:
-                render_article_list(results, show_author=show_author)
+                if data_type == "news":
+                    render_article_list(news_results)
+                elif data_type == "bsky":
+                    render_article_list(sns_results, show_author=True)
+                elif data_type == "hatena":
+                    render_hatena_tab(hatena_data, hatena_results)
 
         # --- 履歴保存 ---
         save_history(keyword, news_results, sns_results, hatena_results)
