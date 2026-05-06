@@ -1,14 +1,14 @@
 # データ収集 — feedparser / atproto / requests
 
-## これは何？
+## データ収集の概要
 
 本プロジェクトでは3つの情報源からデータを集めています。それぞれ取得方法が異なるため、用途に合ったライブラリを使い分けています。
 
-| 情報源 | ライブラリ | プロトコル |
-|--------|-----------|-----------|
-| Googleニュース | feedparser | RSS（XML） |
-| BlueSky | atproto | AT Protocol（REST API） |
-| はてなブックマーク | requests | HTTP（JSON API） |
+| 情報源             | ライブラリ | プロトコル              |
+| ------------------ | ---------- | ----------------------- |
+| Googleニュース     | feedparser | RSS（XML）              |
+| BlueSky            | atproto    | AT Protocol（REST API） |
+| はてなブックマーク | requests   | HTTP（JSON API）        |
 
 ## Googleニュース — feedparser
 
@@ -116,8 +116,13 @@ post_url = f"https://bsky.app/profile/{post.author.handle}/post/{rkey}"
 
 本プロジェクトでは2つのAPIを組み合わせて使っています。
 
-1. **検索RSS** — キーワードでブックマークされた記事を検索
-2. **エントリーJSON API** — 特定記事のコメント一覧を取得
+1. **検索RSS**
+
+- キーワードでブックマークされた記事を検索
+
+2. **エントリーJSON API**
+
+- 特定記事のコメント一覧を取得
 
 ### 検索RSSで記事を探す
 
@@ -176,11 +181,11 @@ for entry in top_entries[:5]:  # 上位5件に限定
 
 ## 3つのライブラリの使い分けまとめ
 
-| ライブラリ | 得意なこと | 本プロジェクトでの役割 |
-|-----------|-----------|---------------------|
+| ライブラリ | 得意なこと          | 本プロジェクトでの役割               |
+| ---------- | ------------------- | ------------------------------------ |
 | feedparser | RSSフィードのパース | Googleニュース・はてブ検索の記事取得 |
-| atproto | BlueSky APIとの通信 | SNS投稿の検索・取得 |
-| requests | 汎用HTTPリクエスト | はてブJSON APIからコメント取得 |
+| atproto    | BlueSky APIとの通信 | SNS投稿の検索・取得                  |
+| requests   | 汎用HTTPリクエスト  | はてブJSON APIからコメント取得       |
 
 feedparserはRSS/Atom形式のXMLを扱うのに特化しており、requestsで取得してXMLを自分でパースするより圧倒的に楽です。atprotoはBlueSky専用のSDKで、認証やページネーションを内部で処理してくれます。
 

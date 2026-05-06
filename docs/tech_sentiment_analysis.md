@@ -1,15 +1,17 @@
-# 感情分析 — transformers + BERT日本語モデル
+# 感情分析（Sentiment Analysis） — transformers + BERT日本語モデル
 
-## これは何？
+## 感情分析とは
 
-感情分析（Sentiment Analysis）は、テキストが「ポジティブ」「ネガティブ」「中立」のどれに近いかを判定する自然言語処理の技術です。
+感情分析は、テキストが「ポジティブ」「ネガティブ」「中立」のどれに近いかを判定する自然言語処理の技術です。
 
 本プロジェクトでは、Googleニュースの見出し・BlueSkyの投稿・はてブのコメントに対して感情分析を行い、各ソースの「空気感」を数値化しています。
 
 ## 使っている技術
 
-- **transformers** — Hugging Face社が開発した自然言語処理ライブラリ。学習済みモデルを簡単に呼び出せる
-- **koheiduck/bert-japanese-finetuned-sentiment** — 日本語テキストの感情を3クラス（POSITIVE / NEUTRAL / NEGATIVE）に分類するBERTモデル
+- **transformers**
+  - Hugging Face社が開発した自然言語処理ライブラリ。学習済みモデルを簡単に呼び出せる
+- **koheiduck/bert-japanese-finetuned-sentiment**
+  - 日本語テキストの感情を3クラス（POSITIVE / NEUTRAL / NEGATIVE）に分類するBERTモデル
 
 ## BERTとは
 

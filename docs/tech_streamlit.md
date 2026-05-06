@@ -1,19 +1,19 @@
 # Streamlit — WebアプリのUI層
 
-## これは何？
+## Streamlitとは
 
 Streamlitは、Pythonだけでブラウザ上に動くWebアプリを作れるフレームワークです。HTML/CSS/JavaScriptを一切書かずに、データの入力フォームやグラフ、テーブルなどを表示できます。
 
 本プロジェクトでは、キーワード入力→分析実行→結果表示という一連の流れをStreamlitで構築しています。
 
-## なぜStreamlitを選んだか
+## Streamlitの選定理由
 
-- Pythonだけで完結する（フロントエンド技術が不要）
+- Pythonだけで完結する（フロントエンドが不要）
 - データ分析系のUIに特化しており、グラフやメトリクス表示が簡単
 - `streamlit run app.py` の1コマンドで起動できる手軽さ
 - 状態管理やキャッシュの仕組みが組み込まれている
 
-FlaskやDjangoだとHTMLテンプレートを書く必要がありますが、Streamlitなら全部Pythonで済みます。
+FlaskやDjangoだとHTMLテンプレートを書く必要がありますが、Streamlitなら全部Pythonで済む点もメリットとして考慮
 
 ## 基本的な使い方
 
@@ -31,13 +31,13 @@ if st.button("分析開始"):
     st.write(f"「{keyword}」を分析します...")
 ```
 
-これだけで、ブラウザ上にタイトル・入力欄・ボタンが表示されます。
+これだけで、ブラウザ上にタイトル・入力欄・ボタンが表示される
 
 ## 本プロジェクトで使っている主な機能
 
 ### レイアウト（カラム分割）
 
-感情スコアを横並びで表示するために `st.columns` を使っています。
+感情スコアを横並びで表示するために `st.columns` を使っている
 
 ```python
 col1, col2, col3 = st.columns(3)
@@ -74,7 +74,7 @@ progress.empty()  # 完了後に消す
 
 ### キャッシュ（@st.cache_resource）
 
-BERTモデルやLLMは読み込みに時間がかかるので、一度読み込んだら使い回します。
+BERTモデルやLLMは読み込みに時間がかかるので、一度読み込んだら使い回しする
 
 ```python
 @st.cache_resource
@@ -83,7 +83,7 @@ def load_sentiment_model():
     return pipeline("sentiment-analysis", model="...")
 ```
 
-`@st.cache_resource` を付けた関数は、Streamlitがページを再描画しても再実行されません。重いモデルの読み込みを毎回やらずに済むので、2回目以降の分析が高速になります。
+`@st.cache_resource` を付けた関数は、Streamlitがページを再描画しても再実行されません。重いモデルの読み込みを毎回やらずに済むので、2回目以降の分析が高速になる
 
 ### サイドバー
 
