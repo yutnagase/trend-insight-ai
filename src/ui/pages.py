@@ -80,12 +80,6 @@ def render_live_analysis(result: AnalysisResult) -> None:
     st.subheader("📰 記事・投稿一覧")
     render_article_tabs(result, live=True)
 
-    # AI総評
-    st.divider()
-    st.subheader("🤖 AIによる総合マーケット・インサイト")
-    if result.ai_report:
-        st.markdown(result.ai_report)
-
 
 def render_archived_analysis(entry: dict) -> None:
     """過去の分析結果を表示する."""

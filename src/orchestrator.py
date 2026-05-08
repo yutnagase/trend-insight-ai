@@ -41,8 +41,13 @@ class AnalysisOrchestrator:
         result = self._analyze(
             keyword, news_articles, sns_articles, hatena_articles, hatena_entry_data
         )
-        self._generate_ai_report(result)
+
+        # AI総評以外を先に描画し、ユーザーを待たせない
         render_live_analysis(result)
+
+        # AI総評は最後に生成・表示
+        self._generate_ai_report(result)
+        self._render_ai_report(result)
         self._save(result)
 
     def _collect(
@@ -110,6 +115,13 @@ class AnalysisOrchestrator:
             except Exception as e:
                 logger.error("AI総評生成失敗: %s", e, exc_info=True)
                 st.warning(f"AI総評レポートの生成に失敗しました: {e}")
+
+    def _render_ai_report(self, result: AnalysisResult) -> None:
+        """AI総評レポート表示フェーズ."""
+        st.divider()
+        st.subheader("🤖 AIによる総合マーケット・インサイト")
+        if result.ai_report:
+            st.markdown(result.ai_report)
 
     def _save(self, result: AnalysisResult) -> None:
         """履歴保存フェーズ."""
