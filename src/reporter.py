@@ -238,6 +238,19 @@ def generate_report(
         analysis_types=analysis_types,
     )
 
+    # プロンプトがn_ctxを超えないようトークン数をチェックし、超過時は代表意見を削ってリトライ
+    max_input_tokens = 2048 - 512 - 64  # n_ctx - max_tokens - 余裕
+    token_count = len(llm.tokenize(prompt.encode("utf-8")))
+    if token_count > max_input_tokens:
+        # 代表意見を削除してリトライ
+        prompt = build_prompt(
+            keyword, news_stats, news_keywords, news_count, None,
+            bsky_stats, bsky_keywords, bsky_count, None,
+            hatena_stats, hatena_keywords, hatena_count, None,
+            topic_sentiments=topic_sentiments,
+            analysis_types=analysis_types,
+        )
+
     output = llm(
         prompt,
         max_tokens=512,
