@@ -19,6 +19,7 @@ from src.reporter import generate_report
 from src.services.history import load_history, save_history
 from src.services.insight import generate_insight
 from src.services.text_processor import create_tokenizer, extract_keywords
+from src.services.analysis_type import detect_analysis_types
 from src.services.topic_sentiment import compute_topic_sentiments
 from src.services.wordcloud_generator import generate_wordcloud, save_wordcloud_image
 
@@ -319,6 +320,16 @@ def _run_analysis(keyword: str, bsky_handle: str, bsky_password: str) -> None:
     st.divider()
     st.markdown(generate_insight(news_stats, bsky_stats, hatena_stats))
 
+    # --- 分析タイプ判定用の事前計算 ---
+    net_scores: dict[str, float] = {"news": compute_net_score(news_stats)}
+    neutral_ratios: dict[str, float] = {"news": news_stats["neutral"]}
+    if bsky_stats:
+        net_scores["bsky"] = compute_net_score(bsky_stats)
+        neutral_ratios["bsky"] = bsky_stats["neutral"]
+    if hatena_stats:
+        net_scores["hatena"] = compute_net_score(hatena_stats)
+        neutral_ratios["hatena"] = hatena_stats["neutral"]
+
     # --- 代表コメント ---
     st.subheader("💬 代表的な意見")
     news_samples = select_representative(news_results)
@@ -396,6 +407,24 @@ def _run_analysis(keyword: str, bsky_handle: str, bsky_password: str) -> None:
                     )
             else:
                 st.caption("十分なデータがありません")
+
+    # --- 分析タイプ判定 ---
+    combined_topics = [t for topics in all_topic_sentiments.values() for t in topics]
+
+    from src.services.insight import compute_divergences
+    divergences = compute_divergences(net_scores) if len(net_scores) >= 2 else []
+    max_div = divergences[0][2] if divergences else 0.0
+
+    analysis_types = detect_analysis_types(
+        net_scores=net_scores,
+        max_divergence=max_div,
+        topic_sentiments=combined_topics,
+        neutral_ratios=neutral_ratios,
+    )
+
+    st.subheader("📋 分析タイプ")
+    for at in analysis_types:
+        st.markdown(f"{at['emoji']} **{at['label']}** — {at['reason']}")
 
     # --- ワードクラウド ---
     st.subheader("☁️ ワードクラウド")
@@ -495,6 +524,7 @@ def _run_analysis(keyword: str, bsky_handle: str, bsky_password: str) -> None:
                 hatena_count=len(hatena_results),
                 hatena_samples=hatena_samples,
                 topic_sentiments=all_topic_sentiments,
+                analysis_types=analysis_types,
             )
             st.markdown(ai_report)
         except Exception as e:

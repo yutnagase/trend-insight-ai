@@ -53,16 +53,31 @@ TrendInsight AIは、任意のキーワードに対して以下の3つの情報�
 - **トピック別感情分析**
   - キーワード単位で感情を集約し、どの話題がポジティブ／ネガティブに寄与しているかを可視化
   - 「なぜその差が生まれているのか」を説明できる粒度の分析を提供
+- **分析タイプの自動判定**
+  - スコア・乖離値・トピック分布・中立率から分析パターンをルールベースで分類
+  - 構造的乖離 / トピック集中型 / 中立支配 / 感情一致 / 混在型の5タイプ
+  - トピック集中型は平均±1σの相対評価で判定し、データ量に依存しない安定した分類を実現
 - **データドリブンなLLM総評**
-  - スコア値・投稿数・乖離幅・代表コメントを事前計算しプロンプトに注入
+  - スコア値・投稿数・乖離幅・トピック感情・分析タイプを事前計算しプロンプトに注入
   - LLMは「分析する」のではなく「データに基づいて説明する」役割に限定
   - 出力は4段構成（概要→数値根拠→トピック分析→結論）で構造化
 - **代表意見の自動抽出**
   - 各ソースからpositive/negativeの最上位コメントを自動選定し、分析の根拠として表示
+  - ラベルベースのフィルタリングにより、同一コメントの重複表示を防止
 - **ワードクラウド**
   - メディア・SNS・はてブそれぞれの頻出語をワードクラウドとして並べて表示し、論点の違いが一目でわかる
+  - メディア名・数字トークンの自動除外により、ノイズのないキーワード抽出を実現
 - **過去の分析結果を再閲覧**
   - ワードクラウド画像・AI総評付きで、いつでも過去分析結果を参照できる
+
+## Design Philosophy
+
+本ツールの設計は以下の原則に基づいています。
+
+1. **LLMに分析させない** — 感情スコア・乖離値・トピック感情・分析タイプはすべてコードで事前計算し、LLMには「説明」のみを担当させる。これにより出力の再現性と検証可能性を確保
+2. **既存出力の組み合わせで新しい分析を生む** — トピック別感情分析は新モデル追加ゼロで実現。BERT感情ラベル × Janomeキーワードの掛け合わせという最小コストのアプローチ
+3. **相対評価で閾値の脆弱性を排除** — 分析タイプ判定のトピック集中型は、固定閾値ではなく平均±1σで判定。データ量やトピック分布が変わっても安定動作
+4. **外部依存ゼロ・ローカル完結** — 有料API不要、データ外部送信なし。個人開発者が継続運用できるアーキテクチャ
 
 ## Analysis Pipeline
 
@@ -74,15 +89,17 @@ flowchart LR
     B --> C[統計量算出<br/>ネットスコア<br/>代表意見抽出]
     B --> D[乖離検出<br/>全ペア乖離幅<br/>段階ラベル付与]
     B --> F[トピック別感情<br/>キーワード×感情集約]
-    C --> E[LLM説明生成<br/>ELYZA-8B]
-    D --> E
-    F --> E
+    C --> G[分析タイプ判定<br/>ルールベース分類]
+    D --> G
+    F --> G
+    G --> E[LLM説明生成<br/>ELYZA-8B]
 
     style A fill:#e3f2fd
     style B fill:#fff3e0
     style C fill:#e8f5e9
     style D fill:#e8f5e9
     style F fill:#e8f5e9
+    style G fill:#f3e5f5
     style E fill:#fce4ec
 ```
 
@@ -92,8 +109,22 @@ flowchart LR
 | 統計集約         | コード（ルールベース）       | ソース別ネットスコア、中立率  |
 | 乖離検出         | コード（ルールベース）       | ペア別乖離幅 + 段階ラベル     |
 | トピック別感情   | コード（キーワード×ラベル集約） | 話題単位のネットスコア        |
+| 分析タイプ判定   | コード（統計的ルール）       | パターン分類 + 判定理由       |
 | 代表意見選定     | コード（Top-K抽出）          | pos/neg各1件×ソース数         |
 | 総評生成         | LLM（ELYZA-8B）              | 上記データを引用した説明文    |
+
+## Analysis Type Classification
+
+分析結果に「意味」を付与するルールベースのパターン分類システムです。
+
+| タイプ | 条件 | 意味 |
+|--------|------|------|
+| 🔥 構造的乖離 | 最大乖離 > 0.5 かつ ソース間で評価方向が逆 | メディアと世論で認識が真逆 |
+| ⚡ トピック集中型ネガ | トピックスコアが平均 - 1σ未満 | 特定話題に批判が集中 |
+| 🌟 トピック集中型ポジ | トピックスコアが平均 + 1σ超 | 特定話題に高評価が集中 |
+| ⚪ 中立支配 | 全ソースのneutral > 60% | 明確な評価が少ない（様子見） |
+| 🤝 感情一致 | 全ソース同方向 かつ 最大乖離 < 0.2 | 全ソースで意見が一致 |
+| 🔀 混在型 | 上記いずれにも非該当 | 複合的な状態 |
 
 ## Architecture
 
@@ -102,14 +133,17 @@ flowchart TB
     subgraph UI["Streamlit UI (app.py)"]
         UI1["🌡️ 温度計バー"]
         UI2["📊 乖離分析パネル"]
-        UI3["💬 代表コメント"]
-        UI4["☁️ ワードクラウド"]
+        UI3["📋 分析タイプ"]
+        UI4["💬 代表コメント"]
+        UI5["🎯 トピック別感情"]
+        UI6["☁️ ワードクラウド"]
     end
 
     subgraph Analysis["分析レイヤー"]
         AN["analyzer.py<br/>BERT 3-class + 辞書補正<br/>compute_net_score()<br/>select_representative()"]
         IN["services/insight.py<br/>compute_divergences()<br/>段階ラベル判定"]
         TS["services/topic_sentiment.py<br/>compute_topic_sentiments()<br/>キーワード×感情集約"]
+        AT["services/analysis_type.py<br/>detect_analysis_types()<br/>統計的パターン分類"]
     end
 
     subgraph DataCollection["データ収集"]
@@ -228,9 +262,10 @@ trend_insight_ai/
 │   ├── models/
 │   │   └── article.py     # Pydantic Article model
 │   └── services/
-│       ├── history.py     # Analysis history persistence
-│       ├── insight.py     # Rule-based gap detection
-│       ├── text_processor.py  # Keyword extraction
+│       ├── analysis_type.py   # Rule-based pattern classification
+│       ├── history.py         # Analysis history persistence
+│       ├── insight.py         # Rule-based gap detection
+│       ├── text_processor.py  # Keyword extraction (with noise filtering)
 │       ├── topic_sentiment.py # Topic-level sentiment aggregation
 │       └── wordcloud_generator.py
 ├── tests/                 # pytest test suite

@@ -56,6 +56,7 @@ def build_prompt(
     hatena_count: int = 0,
     hatena_samples: dict[str, list[str]] | None = None,
     topic_sentiments: dict[str, list[dict]] | None = None,
+    analysis_types: list[dict] | None = None,
 ) -> str:
     """LLMに渡すプロンプトを構築する.
 
@@ -156,11 +157,20 @@ def build_prompt(
             topic_lines.append(f"  {label}: " + "、".join(items))
         topic_text = "\n".join(topic_lines)
 
+    # 分析タイプ情報
+    type_text = ""
+    if analysis_types:
+        type_labels = [
+            f"{at['emoji']} {at['label']}（{at['reason']}）" for at in analysis_types
+        ]
+        type_text = "\n■ 分析タイプ\n  " + "\n  ".join(type_labels)
+
     prompt = f"""以下は「{keyword}」に関する複数ソースの感情分析データです。
 
 {data_section}
 {divergence_text}
 {topic_text}
+{type_text}
 
 上記データに基づき、総合インサイトを日本語で作成してください。
 
@@ -197,6 +207,7 @@ def generate_report(
     hatena_count: int = 0,
     hatena_samples: dict[str, list[str]] | None = None,
     topic_sentiments: dict[str, list[dict]] | None = None,
+    analysis_types: list[dict] | None = None,
 ) -> str:
     """LLMを使って総評レポートを生成する.
 
@@ -224,6 +235,7 @@ def generate_report(
         bsky_stats, bsky_keywords, bsky_count, bsky_samples,
         hatena_stats, hatena_keywords, hatena_count, hatena_samples,
         topic_sentiments=topic_sentiments,
+        analysis_types=analysis_types,
     )
 
     output = llm(
