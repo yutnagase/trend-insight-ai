@@ -61,12 +61,19 @@ TrendInsight AIは、任意のキーワードに対して以下の3つの情報�
 
 本ツールの分析は以下の多段パイプラインで構成されており、LLMは最終段の「説明」のみを担当します。
 
-```
-[データ収集] → [BERT感情分析+辞書補正] → [統計量算出] → [乖離検出] → [LLM説明生成]
-                                            │                │
-                                            ▼                ▼
-                                      ネットスコア      全ペア乖離幅
-                                      代表意見抽出      段階ラベル付与
+```mermaid
+flowchart LR
+    A[データ収集<br/>RSS / AT Protocol / API] --> B[BERT感情分析<br/>+ 辞書補正]
+    B --> C[統計量算出<br/>ネットスコア<br/>代表意見抽出]
+    B --> D[乖離検出<br/>全ペア乖離幅<br/>段階ラベル付与]
+    C --> E[LLM説明生成<br/>ELYZA-8B]
+    D --> E
+
+    style A fill:#e3f2fd
+    style B fill:#fff3e0
+    style C fill:#e8f5e9
+    style D fill:#e8f5e9
+    style E fill:#fce4ec
 ```
 
 | 処理段階 | 担当 | 出力 |
@@ -79,27 +86,45 @@ TrendInsight AIは、任意のキーワードに対して以下の3つの情報�
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                  Streamlit UI (app.py)                    │
-│  - 温度計バー（ネットスコア可視化）                       │
-│  - 乖離分析パネル                                        │
-│  - 代表コメント表示                                      │
-├─────────────────────────────────────────────────────────┤
-│  src/analyzer.py         │  src/services/insight.py      │
-│  - SentimentAnalyzer     │  - compute_divergences()      │
-│  - BERT 3-class          │  - 段階ラベル判定             │
-│  - Dictionary Boost      │  - 全ペア乖離計算            │
-│  - compute_net_score()   │                               │
-│  - select_representative()│                              │
-├──────────────────────────┼───────────────────────────────┤
-│  src/clients/            │  src/reporter.py              │
-│  - GoogleNewsClient      │  - ELYZA-8B GGUF             │
-│  - BlueskyClient         │  - データ注入型プロンプト     │
-│  - HatenaClient          │  - 4段構成出力               │
-├─────────────────────────────────────────────────────────┤
-│  src/models/article.py (Pydantic)                        │
-└─────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph UI["Streamlit UI (app.py)"]
+        UI1["🌡️ 温度計バー"]
+        UI2["📊 乖離分析パネル"]
+        UI3["💬 代表コメント"]
+        UI4["☁️ ワードクラウド"]
+    end
+
+    subgraph Analysis["分析レイヤー"]
+        AN["analyzer.py<br/>BERT 3-class + 辞書補正<br/>compute_net_score()<br/>select_representative()"]
+        IN["services/insight.py<br/>compute_divergences()<br/>段階ラベル判定"]
+    end
+
+    subgraph DataCollection["データ収集"]
+        C1["GoogleNewsClient<br/>RSS"]
+        C2["BlueskyClient<br/>AT Protocol"]
+        C3["HatenaClient<br/>公開API"]
+    end
+
+    subgraph LLM["レポート生成"]
+        RP["reporter.py<br/>ELYZA-8B GGUF<br/>データ注入型プロンプト<br/>4段構成出力"]
+    end
+
+    subgraph Model["データモデル"]
+        MD["models/article.py<br/>Pydantic"]
+    end
+
+    DataCollection --> MD
+    MD --> Analysis
+    Analysis --> UI
+    Analysis --> LLM
+    LLM --> UI
+
+    style UI fill:#e3f2fd
+    style Analysis fill:#e8f5e9
+    style DataCollection fill:#fff3e0
+    style LLM fill:#fce4ec
+    style Model fill:#f3e5f5
 ```
 
 ## Getting Started
