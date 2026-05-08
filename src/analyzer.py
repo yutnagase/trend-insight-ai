@@ -110,6 +110,8 @@ def select_representative(
 ) -> dict[str, list[str]]:
     """分析結果からpositive/negativeの代表的な意見を抽出する.
 
+    ラベルが該当する記事のみから抽出し、同一記事が両方に出ることを防ぐ。
+
     Args:
         results: analyze()の結果を含む辞書のリスト.
         top_n: 各極性から抽出する件数.
@@ -119,9 +121,11 @@ def select_representative(
     """
     if not results:
         return {"positive": [], "negative": []}
-    sorted_by_pos = sorted(results, key=lambda r: r["positive"], reverse=True)
-    sorted_by_neg = sorted(results, key=lambda r: r["negative"], reverse=True)
+    pos_items = [r for r in results if r["label"] == "positive"]
+    neg_items = [r for r in results if r["label"] == "negative"]
+    pos_sorted = sorted(pos_items, key=lambda r: r["positive"], reverse=True)
+    neg_sorted = sorted(neg_items, key=lambda r: r["negative"], reverse=True)
     return {
-        "positive": [r["title"][:80] for r in sorted_by_pos[:top_n]],
-        "negative": [r["title"][:80] for r in sorted_by_neg[:top_n]],
+        "positive": [r["title"][:80] for r in pos_sorted[:top_n]],
+        "negative": [r["title"][:80] for r in neg_sorted[:top_n]],
     }

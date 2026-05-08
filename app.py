@@ -345,11 +345,21 @@ def _run_analysis(keyword: str, bsky_handle: str, bsky_password: str) -> None:
     bsky_titles = [r["title"] for r in sns_results]
     hatena_texts = [r["title"] for r in hatena_results]
 
+    # メディア名を動的ストップワードとして抽出（GoogleニュースRSSの「タイトル - メディア名」形式から）
+    news_media_names: set[str] = set()
+    for title in news_titles:
+        if " - " in title:
+            media = title.rsplit(" - ", 1)[-1].strip()
+            if media:
+                news_media_names.add(media)
+
     # --- トピック別感情分析 ---
     st.subheader("🎯 トピック別感情分析")
     st.caption("各話題がポジティブ／ネガティブどちらに寄与しているかを表示")
 
-    news_kw_for_topic = extract_keywords(news_titles, keyword, tokenizer=tokenizer)
+    news_kw_for_topic = extract_keywords(
+        news_titles, keyword, tokenizer=tokenizer, extra_stop_words=news_media_names
+    )
     bsky_kw_for_topic = (
         extract_keywords(bsky_titles, keyword, tokenizer=tokenizer)
         if sns_results else None
@@ -404,7 +414,10 @@ def _run_analysis(keyword: str, bsky_handle: str, bsky_password: str) -> None:
         with col:
             st.markdown(f"**{source_name}**")
             wc = generate_wordcloud(
-                extract_keywords(titles, keyword, tokenizer=tokenizer)
+                extract_keywords(
+                    titles, keyword, tokenizer=tokenizer,
+                    extra_stop_words=news_media_names if source_key == "news" else None,
+                )
             )
             if wc:
                 st.image(wc.to_array(), use_container_width=True)
@@ -418,7 +431,10 @@ def _run_analysis(keyword: str, bsky_handle: str, bsky_password: str) -> None:
         with col:
             st.markdown(f"**{source_name}**")
             for i, (word, count) in enumerate(
-                extract_keywords(titles, keyword, tokenizer=tokenizer)[:5], 1
+                extract_keywords(
+                    titles, keyword, tokenizer=tokenizer,
+                    extra_stop_words=news_media_names if source_key == "news" else None,
+                )[:5], 1
             ):
                 st.markdown(f"**{i}.** {word}（{count}回）")
 
@@ -449,7 +465,10 @@ def _run_analysis(keyword: str, bsky_handle: str, bsky_password: str) -> None:
     ai_report = ""
     with st.spinner("🧠 AIが総評レポートを生成中（初回はモデルダウンロードのため数分かかります）..."):
         try:
-            news_kw = extract_keywords(news_titles, keyword, tokenizer=tokenizer)
+            news_kw = extract_keywords(
+                news_titles, keyword, tokenizer=tokenizer,
+                extra_stop_words=news_media_names,
+            )
             bsky_kw = (
                 extract_keywords(bsky_titles, keyword, tokenizer=tokenizer)
                 if sns_results
