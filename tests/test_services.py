@@ -46,21 +46,28 @@ class TestExtractKeywords:
 class TestGenerateInsight:
     """generate_insightのテスト."""
 
-    def test_single_source_positive(self):
+    def test_single_source_shows_score(self):
         stats = {"positive": 0.8, "neutral": 0.1, "negative": 0.1}
         result = generate_insight(stats)
-        assert "ポジティブ" in result
+        assert "スコア" in result
+        assert "+0.70" in result
 
-    def test_gap_detected(self):
+    def test_large_gap_detected(self):
         news = {"positive": 0.8, "neutral": 0.1, "negative": 0.1}
         bsky = {"positive": 0.1, "neutral": 0.1, "negative": 0.8}
         result = generate_insight(news, bsky_stats=bsky)
-        assert "温度差" in result
+        assert "構造的乖離" in result
 
     def test_no_gap(self):
         stats = {"positive": 0.8, "neutral": 0.1, "negative": 0.1}
         result = generate_insight(stats, bsky_stats=stats, hatena_stats=stats)
-        assert "一致" in result
+        assert "大差なし" in result
+
+    def test_moderate_gap(self):
+        news = {"positive": 0.6, "neutral": 0.2, "negative": 0.2}
+        bsky = {"positive": 0.2, "neutral": 0.2, "negative": 0.6}
+        result = generate_insight(news, bsky_stats=bsky)
+        assert "乖離分析" in result
 
 
 class TestHistory:

@@ -7,7 +7,12 @@ from pathlib import Path
 import streamlit as st
 from dotenv import load_dotenv
 
-from src.analyzer import SentimentAnalyzer, compute_sentiment_stats
+from src.analyzer import (
+    SentimentAnalyzer,
+    compute_net_score,
+    compute_sentiment_stats,
+    select_representative,
+)
 from src.clients import BlueskyClient, GoogleNewsClient, HatenaClient
 from src.models.article import Article
 from src.reporter import generate_report
@@ -34,12 +39,35 @@ def _get_tokenizer():
 # --- UI描画ヘルパー ---
 
 
+def _score_label(score: float) -> str:
+    """スコアから直感的なラベルを返す."""
+    if score >= 0.3:
+        return "ポジティブ優勢"
+    elif score >= 0.1:
+        return "ややポジ寄り"
+    elif score > -0.1:
+        return "中立的"
+    elif score > -0.3:
+        return "やや懸念寄り"
+    return "ネガティブ優勢"
+
+
 def render_sentiment_metrics(stats: dict[str, float]) -> None:
-    """感情比率を3カラムで表示する."""
+    """感情比率と温度計バーを表示する."""
+    score = compute_net_score(stats)
     col1, col2, col3 = st.columns(3)
     col1.metric("ポジティブ", f"{stats['positive']:.1%}")
     col2.metric("中立", f"{stats['neutral']:.1%}")
     col3.metric("ネガティブ", f"{stats['negative']:.1%}")
+
+    # 温度計バー（テキスト描画）
+    label = _score_label(score)
+    bar_len = 20
+    pos = int(round((score + 1) / 2 * bar_len))
+    pos = max(0, min(bar_len, pos))
+    bar = "━" * pos + "●" + "━" * (bar_len - pos)
+    st.text(f"ネガ ◀{bar}▶ ポジ")
+    st.caption(f"スコア: {score:+.2f}（{label}）")
 
 
 def render_article_list(results: list[dict], show_author: bool = False) -> None:
@@ -290,6 +318,27 @@ def _run_analysis(keyword: str, bsky_handle: str, bsky_password: str) -> None:
     st.divider()
     st.markdown(generate_insight(news_stats, bsky_stats, hatena_stats))
 
+    # --- 代表コメント ---
+    st.subheader("💬 代表的な意見")
+    news_samples = select_representative(news_results)
+    bsky_samples = select_representative(sns_results) if sns_results else None
+    hatena_samples = select_representative(hatena_results) if hatena_results else None
+
+    sample_sources = [("📰 メディア", news_samples)]
+    if bsky_samples:
+        sample_sources.append(("💬 BlueSky", bsky_samples))
+    if hatena_samples:
+        sample_sources.append(("📝 はてブ", hatena_samples))
+
+    sample_cols = st.columns(len(sample_sources))
+    for col, (src_name, samples) in zip(sample_cols, sample_sources):
+        with col:
+            st.markdown(f"**{src_name}**")
+            for s in samples.get("positive", []):
+                st.markdown(f"🟢 {s}")
+            for s in samples.get("negative", []):
+                st.markdown(f"🔴 {s}")
+
     # --- ワードクラウド ---
     st.subheader("☁️ ワードクラウド")
     news_titles = [r["title"] for r in news_results]
@@ -371,10 +420,16 @@ def _run_analysis(keyword: str, bsky_handle: str, bsky_password: str) -> None:
                 keyword=keyword,
                 news_stats=news_stats,
                 news_keywords=news_kw,
+                news_count=len(news_results),
+                news_samples=news_samples,
                 bsky_stats=bsky_stats,
                 bsky_keywords=bsky_kw,
+                bsky_count=len(sns_results),
+                bsky_samples=bsky_samples,
                 hatena_stats=hatena_stats,
                 hatena_keywords=hatena_kw,
+                hatena_count=len(hatena_results),
+                hatena_samples=hatena_samples,
             )
             st.markdown(ai_report)
         except Exception as e:

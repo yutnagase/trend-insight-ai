@@ -91,3 +91,37 @@ def compute_sentiment_stats(results: list[dict]) -> dict[str, float]:
         "neutral": neu_count / total,
         "negative": neg_count / total,
     }
+
+
+def compute_net_score(stats: dict[str, float]) -> float:
+    """感情比率からネットスコア（positive - negative）を算出する.
+
+    Args:
+        stats: compute_sentiment_statsの出力.
+
+    Returns:
+        -1.0〜1.0のネットスコア.
+    """
+    return stats["positive"] - stats["negative"]
+
+
+def select_representative(
+    results: list[dict], top_n: int = 1,
+) -> dict[str, list[str]]:
+    """分析結果からpositive/negativeの代表的な意見を抽出する.
+
+    Args:
+        results: analyze()の結果を含む辞書のリスト.
+        top_n: 各極性から抽出する件数.
+
+    Returns:
+        positive/negativeそれぞれの代表テキストリスト.
+    """
+    if not results:
+        return {"positive": [], "negative": []}
+    sorted_by_pos = sorted(results, key=lambda r: r["positive"], reverse=True)
+    sorted_by_neg = sorted(results, key=lambda r: r["negative"], reverse=True)
+    return {
+        "positive": [r["title"][:80] for r in sorted_by_pos[:top_n]],
+        "negative": [r["title"][:80] for r in sorted_by_neg[:top_n]],
+    }
