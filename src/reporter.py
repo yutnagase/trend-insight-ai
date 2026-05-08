@@ -248,4 +248,8 @@ def generate_report(
 
     generated = output["choices"][0]["text"].strip()
     # プロンプトで①から始めているので、先頭に①を付与して返す
-    return f"① {generated}" if not generated.startswith("①") else generated
+    result = f"① {generated}" if not generated.startswith("①") else generated
+    # ①②③④の前に改行を挿入（LLMが改行なしで出力するケース対策）
+    for marker in ["②", "③", "④"]:
+        result = result.replace(marker, f"\n\n{marker}")
+    return result
