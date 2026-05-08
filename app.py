@@ -357,12 +357,16 @@ def _run_analysis(keyword: str, bsky_handle: str, bsky_password: str) -> None:
     hatena_texts = [r["title"] for r in hatena_results]
 
     # メディア名を動的ストップワードとして抽出（GoogleニュースRSSの「タイトル - メディア名」形式から）
+    # メディア名全体 + スペース分割した各トークンも追加（Janomeが個別トークンに分割するため）
     news_media_names: set[str] = set()
     for title in news_titles:
         if " - " in title:
             media = title.rsplit(" - ", 1)[-1].strip()
             if media:
                 news_media_names.add(media)
+                for token in media.split():
+                    if len(token) > 1:
+                        news_media_names.add(token)
 
     # --- トピック別感情分析 ---
     st.subheader("🎯 トピック別感情分析")
