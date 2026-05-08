@@ -19,6 +19,7 @@ from src.reporter import generate_report
 from src.services.history import load_history, save_history
 from src.services.insight import generate_insight
 from src.services.text_processor import create_tokenizer, extract_keywords
+from src.services.topic_sentiment import compute_topic_sentiments
 from src.services.wordcloud_generator import generate_wordcloud, save_wordcloud_image
 
 load_dotenv()
@@ -339,11 +340,55 @@ def _run_analysis(keyword: str, bsky_handle: str, bsky_password: str) -> None:
             for s in samples.get("negative", []):
                 st.markdown(f"🔴 {s}")
 
-    # --- ワードクラウド ---
-    st.subheader("☁️ ワードクラウド")
+    # --- テキストリスト（トピック分析・ワードクラウド共通） ---
     news_titles = [r["title"] for r in news_results]
     bsky_titles = [r["title"] for r in sns_results]
     hatena_texts = [r["title"] for r in hatena_results]
+
+    # --- トピック別感情分析 ---
+    st.subheader("🎯 トピック別感情分析")
+    st.caption("各話題がポジティブ／ネガティブどちらに寄与しているかを表示")
+
+    news_kw_for_topic = extract_keywords(news_titles, keyword, tokenizer=tokenizer)
+    bsky_kw_for_topic = (
+        extract_keywords(bsky_titles, keyword, tokenizer=tokenizer)
+        if sns_results else None
+    )
+    hatena_kw_for_topic = (
+        extract_keywords(hatena_texts, keyword, tokenizer=tokenizer)
+        if hatena_results else None
+    )
+
+    topic_sources = [("📰 メディア", news_results, news_kw_for_topic)]
+    if sns_results and bsky_kw_for_topic:
+        topic_sources.append(("💬 BlueSky", sns_results, bsky_kw_for_topic))
+    if hatena_results and hatena_kw_for_topic:
+        topic_sources.append(("📝 はてブ", hatena_results, hatena_kw_for_topic))
+
+    topic_cols = st.columns(len(topic_sources))
+    all_topic_sentiments: dict[str, list[dict]] = {}
+    for col, (src_name, src_results, src_kw) in zip(topic_cols, topic_sources):
+        with col:
+            st.markdown(f"**{src_name}**")
+            topics = compute_topic_sentiments(src_results, src_kw)
+            # ソースキー保存（LLMプロンプト用）
+            key = src_name.split(" ")[1] if " " in src_name else src_name
+            all_topic_sentiments[key] = topics
+            if topics:
+                for t in topics[:8]:
+                    score = t["net_score"]
+                    emoji = "🟢" if score > 0.2 else "🔴" if score < -0.2 else "⚪"
+                    bar_width = int(abs(score) * 5)
+                    bar = "█" * max(bar_width, 1)
+                    st.markdown(
+                        f"{emoji} **{t['topic']}** {score:+.2f} {bar}  "
+                        f"(pos:{t['pos']} neg:{t['neg']} 計:{t['count']})"
+                    )
+            else:
+                st.caption("十分なデータがありません")
+
+    # --- ワードクラウド ---
+    st.subheader("☁️ ワードクラウド")
 
     source_titles = [("news", "📰 メディア", news_titles)]
     if sns_results:
@@ -430,6 +475,7 @@ def _run_analysis(keyword: str, bsky_handle: str, bsky_password: str) -> None:
                 hatena_keywords=hatena_kw,
                 hatena_count=len(hatena_results),
                 hatena_samples=hatena_samples,
+                topic_sentiments=all_topic_sentiments,
             )
             st.markdown(ai_report)
         except Exception as e:

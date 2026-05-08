@@ -55,6 +55,7 @@ def build_prompt(
     hatena_keywords: list[tuple[str, int]] | None = None,
     hatena_count: int = 0,
     hatena_samples: dict[str, list[str]] | None = None,
+    topic_sentiments: dict[str, list[dict]] | None = None,
 ) -> str:
     """LLMに渡すプロンプトを構築する.
 
@@ -141,22 +142,38 @@ def build_prompt(
         ]
         divergence_text = "\n■ ソース間の乖離\n" + "\n".join(div_lines)
 
+    # トピック別感情データ
+    topic_text = ""
+    if topic_sentiments:
+        topic_lines = ["\n■ トピック別感情（話題×感情）"]
+        source_label = {"メディア": "メディア", "BlueSky": "SNS", "はてブ": "はてブ"}
+        for src, topics in topic_sentiments.items():
+            if not topics:
+                continue
+            label = source_label.get(src, src)
+            top = topics[:5]
+            items = [f"{t['topic']}({t['net_score']:+.2f})" for t in top]
+            topic_lines.append(f"  {label}: " + "、".join(items))
+        topic_text = "\n".join(topic_lines)
+
     prompt = f"""以下は「{keyword}」に関する複数ソースの感情分析データです。
 
 {data_section}
 {divergence_text}
+{topic_text}
 
 上記データに基づき、総合インサイトを日本語で作成してください。
 
 以下を必ず含めてください：
 - 各ソースのスコア値を引用すること
 - 最も乖離が大きいソースの組み合わせとその数値を明示すること
+- トピック別感情を引用し、どの話題がポジティブ／ネガティブに寄与しているか説明すること
 - 代表意見を根拠として使い、なぜ差が生まれているか説明すること
 
 ■ 総合インサイト
 ① 概要（乖離の有無と程度）
 ② 数値根拠（スコアと乖離幅）
-③ コメント根拠（代表意見からの説明）
+③ トピック分析（どの話題がポジ／ネガに寄与しているか）
 ④ 結論（このトピックの空気感）
 
 ■ 総合インサイト
@@ -179,6 +196,7 @@ def generate_report(
     hatena_keywords: list[tuple[str, int]] | None = None,
     hatena_count: int = 0,
     hatena_samples: dict[str, list[str]] | None = None,
+    topic_sentiments: dict[str, list[dict]] | None = None,
 ) -> str:
     """LLMを使って総評レポートを生成する.
 
@@ -205,6 +223,7 @@ def generate_report(
         keyword, news_stats, news_keywords, news_count, news_samples,
         bsky_stats, bsky_keywords, bsky_count, bsky_samples,
         hatena_stats, hatena_keywords, hatena_count, hatena_samples,
+        topic_sentiments=topic_sentiments,
     )
 
     output = llm(
