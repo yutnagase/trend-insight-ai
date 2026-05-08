@@ -88,6 +88,39 @@ stop = STOP_WORDS | {search_keyword}
 
 検索キーワードそのものも除外しています。「生成AI」で検索したら「生成」「AI」が最頻出になるのは当然なので、それを除いた上で何が話題になっているかを見たいからです。
 
+### 数字トークンの除外
+
+Janomeは「30」「10」などの数字を名詞（数詞）として解析します。「処理時間が30分から10分へ」のような文から「30」「10」がキーワードとして抽出されても意味がありません。そのため、数字のみのトークンは正規表現で除外しています。
+
+```python
+import re
+
+_NUMERIC_PATTERN = re.compile(r"^[\d,.\-+%０-９]+$")
+
+# 抽出時のフィルタに追加
+if not _NUMERIC_PATTERN.match(surface):
+    words.append(surface)
+```
+
+### メディア名の動的除外
+
+GoogleニュースRSSのタイトルは「記事タイトル - メディア名」の形式です。そのため、特定メディアの記事が多いと、そのメディア名がキーワード上位に来てしまいます（例: 「ゴリミー」）。
+
+これを防ぐため、タイトル末尾の「 - メディア名」部分からメディア名を動的に抽出し、`extra_stop_words` としてキーワード抽出時に除外しています。
+
+```python
+# タイトルからメディア名を抽出
+news_media_names = set()
+for title in news_titles:
+    if " - " in title:
+        media = title.rsplit(" - ", 1)[-1].strip()
+        if media:
+            news_media_names.add(media)
+
+# キーワード抽出時に除外
+extract_keywords(titles, keyword, extra_stop_words=news_media_names)
+```
+
 ### 1文字の語を除外する理由
 
 ```python

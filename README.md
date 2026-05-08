@@ -50,10 +50,13 @@ TrendInsight AIは、任意のキーワードに対して以下の3つの情報�
 - **ソース間乖離の定量検出**
   - 全ソースペア（メディア×SNS×はてブ）の乖離幅を自動計算
   - 段階ラベル（大差なし / やや差あり / 明確な意見差 / 構造的乖離）でギャップの深刻度を明示
+- **トピック別感情分析**
+  - キーワード単位で感情を集約し、どの話題がポジティブ／ネガティブに寄与しているかを可視化
+  - 「なぜその差が生まれているのか」を説明できる粒度の分析を提供
 - **データドリブンなLLM総評**
   - スコア値・投稿数・乖離幅・代表コメントを事前計算しプロンプトに注入
   - LLMは「分析する」のではなく「データに基づいて説明する」役割に限定
-  - 出力は4段構成（概要→数値根拠→コメント根拠→結論）で構造化
+  - 出力は4段構成（概要→数値根拠→トピック分析→結論）で構造化
 - **代表意見の自動抽出**
   - 各ソースからpositive/negativeの最上位コメントを自動選定し、分析の根拠として表示
 - **ワードクラウド**
@@ -70,23 +73,27 @@ flowchart LR
     A[データ収集<br/>RSS / AT Protocol / API] --> B[BERT感情分析<br/>+ 辞書補正]
     B --> C[統計量算出<br/>ネットスコア<br/>代表意見抽出]
     B --> D[乖離検出<br/>全ペア乖離幅<br/>段階ラベル付与]
+    B --> F[トピック別感情<br/>キーワード×感情集約]
     C --> E[LLM説明生成<br/>ELYZA-8B]
     D --> E
+    F --> E
 
     style A fill:#e3f2fd
     style B fill:#fff3e0
     style C fill:#e8f5e9
     style D fill:#e8f5e9
+    style F fill:#e8f5e9
     style E fill:#fce4ec
 ```
 
-| 処理段階         | 担当                   | 出力                          |
-| ---------------- | ---------------------- | ----------------------------- |
-| 感情スコアリング | BERT + 辞書補正        | 各記事のpositive/negative確率 |
-| 統計集約         | コード（ルールベース） | ソース別ネットスコア、中立率  |
-| 乖離検出         | コード（ルールベース） | ペア別乖離幅 + 段階ラベル     |
-| 代表意見選定     | コード（Top-K抽出）    | pos/neg各1件×ソース数         |
-| 総評生成         | LLM（ELYZA-8B）        | 上記データを引用した説明文    |
+| 処理段階         | 担当                         | 出力                          |
+| ---------------- | ---------------------------- | ----------------------------- |
+| 感情スコアリング | BERT + 辞書補正              | 各記事のpositive/negative確率 |
+| 統計集約         | コード（ルールベース）       | ソース別ネットスコア、中立率  |
+| 乖離検出         | コード（ルールベース）       | ペア別乖離幅 + 段階ラベル     |
+| トピック別感情   | コード（キーワード×ラベル集約） | 話題単位のネットスコア        |
+| 代表意見選定     | コード（Top-K抽出）          | pos/neg各1件×ソース数         |
+| 総評生成         | LLM（ELYZA-8B）              | 上記データを引用した説明文    |
 
 ## Architecture
 
@@ -102,6 +109,7 @@ flowchart TB
     subgraph Analysis["分析レイヤー"]
         AN["analyzer.py<br/>BERT 3-class + 辞書補正<br/>compute_net_score()<br/>select_representative()"]
         IN["services/insight.py<br/>compute_divergences()<br/>段階ラベル判定"]
+        TS["services/topic_sentiment.py<br/>compute_topic_sentiments()<br/>キーワード×感情集約"]
     end
 
     subgraph DataCollection["データ収集"]
@@ -223,6 +231,7 @@ trend_insight_ai/
 │       ├── history.py     # Analysis history persistence
 │       ├── insight.py     # Rule-based gap detection
 │       ├── text_processor.py  # Keyword extraction
+│       ├── topic_sentiment.py # Topic-level sentiment aggregation
 │       └── wordcloud_generator.py
 ├── tests/                 # pytest test suite
 ├── data/                  # Auto-generated (gitignored)
