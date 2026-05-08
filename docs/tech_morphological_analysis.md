@@ -109,17 +109,22 @@ GoogleニュースRSSのタイトルは「記事タイトル - メディア名�
 これを防ぐため、タイトル末尾の「 - メディア名」部分からメディア名を動的に抽出し、`extra_stop_words` としてキーワード抽出時に除外しています。
 
 ```python
-# タイトルからメディア名を抽出
+# タイトルからメディア名を抽出（スペース分割した各トークンも追加）
 news_media_names = set()
 for title in news_titles:
     if " - " in title:
         media = title.rsplit(" - ", 1)[-1].strip()
         if media:
             news_media_names.add(media)
+            for token in media.split():
+                if len(token) > 1:
+                    news_media_names.add(token)
 
 # キーワード抽出時に除外
 extract_keywords(titles, keyword, extra_stop_words=news_media_names)
 ```
+
+「TBS NEWS DIG」のようにスペースを含むメディア名は、Janomeが「TBS」「NEWS」「DIG」と個別トークンに分割します。メディア名全体だけでなく各トークンもストップワードに追加することで、確実に除外しています。
 
 ### 1文字の語を除外する理由
 
