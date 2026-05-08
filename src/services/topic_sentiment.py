@@ -38,7 +38,9 @@ def compute_topic_sentiments(
         if scores["count"] < min_count:
             continue
         total = scores["pos"] + scores["neg"]
-        net = (scores["pos"] - scores["neg"]) / total if total > 0 else 0.0
+        if total < 2:
+            continue
+        net = (scores["pos"] - scores["neg"]) / total
         output.append({"topic": word, "net_score": net, **scores})
 
     return sorted(output, key=lambda x: x["net_score"])

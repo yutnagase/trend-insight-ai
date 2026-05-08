@@ -420,6 +420,11 @@ def _run_analysis(keyword: str, bsky_handle: str, bsky_password: str) -> None:
         max_divergence=max_div,
         topic_sentiments=combined_topics,
         neutral_ratios=neutral_ratios,
+        sample_counts={
+            "news": len(news_results),
+            "bsky": len(sns_results),
+            "hatena": len(hatena_results),
+        },
     )
 
     st.subheader("📋 分析タイプ")

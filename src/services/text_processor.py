@@ -7,6 +7,8 @@ from janome.tokenizer import Tokenizer
 
 # 数字のみのトークンを除外するパターン
 _NUMERIC_PATTERN = re.compile(r"^[\d,.\-+%０-９]+$")
+# 短すぎる英字トークン（2文字以下の英字のみ）を除外するパターン
+_SHORT_ASCII_PATTERN = re.compile(r"^[A-Za-z]{1,2}$")
 
 # ストップワード（助詞・助動詞・不要語）
 STOP_WORDS: set[str] = {
@@ -54,6 +56,7 @@ def extract_keywords(
                 and len(surface) > 1
                 and surface not in stop
                 and not _NUMERIC_PATTERN.match(surface)
+                and not _SHORT_ASCII_PATTERN.match(surface)
             ):
                 words.append(surface)
     return Counter(words).most_common()
