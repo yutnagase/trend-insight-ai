@@ -25,6 +25,29 @@ def create_tokenizer() -> Tokenizer:
     return Tokenizer()
 
 
+def extract_media_names(titles: list[str]) -> set[str]:
+    """GoogleニュースRSSの「タイトル - メディア名」形式からメディア名を抽出する.
+
+    メディア名全体 + スペース分割した各トークンも追加（Janomeが個別トークンに分割するため）。
+
+    Args:
+        titles: ニュース記事タイトルのリスト.
+
+    Returns:
+        メディア名トークンのセット.
+    """
+    media_names: set[str] = set()
+    for title in titles:
+        if " - " in title:
+            media = title.rsplit(" - ", 1)[-1].strip()
+            if media:
+                media_names.add(media)
+                for token in media.split():
+                    if len(token) > 1:
+                        media_names.add(token)
+    return media_names
+
+
 def extract_keywords(
     titles: list[str],
     search_keyword: str,
