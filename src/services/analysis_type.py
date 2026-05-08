@@ -61,11 +61,11 @@ def detect_analysis_types(
         if std > 0.1:
             neg_outliers = [
                 t for t in topic_sentiments
-                if t["net_score"] < mean - std and t["count"] >= 3
+                if t["net_score"] < mean - std and t["count"] >= 5
             ]
             pos_outliers = [
                 t for t in topic_sentiments
-                if t["net_score"] > mean + std and t["count"] >= 3
+                if t["net_score"] > mean + std and t["count"] >= 5
             ]
 
             if neg_outliers:
@@ -74,7 +74,7 @@ def detect_analysis_types(
                     "type": "topic_concentrated_neg",
                     "emoji": "⚡",
                     "label": "トピック集中型ネガティブ",
-                    "reason": f"「{top_neg}」等に批判が集中（平均{mean:+.2f}から乖離）",
+                    "reason": f"「{top_neg}」等がネガティブ文脈で多く出現（平均{mean:+.2f}から乖離）",
                 })
             if pos_outliers:
                 top_pos = pos_outliers[-1]["topic"]
@@ -82,7 +82,7 @@ def detect_analysis_types(
                     "type": "topic_concentrated_pos",
                     "emoji": "🌟",
                     "label": "トピック集中型ポジティブ",
-                    "reason": f"「{top_pos}」等に高評価が集中（平均{mean:+.2f}から乖離）",
+                    "reason": f"「{top_pos}」等がポジティブ文脈で多く出現（平均{mean:+.2f}から乖離）",
                 })
 
     # 3. 中立支配: 信頼できるソースでneutral比率が高い

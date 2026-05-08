@@ -22,11 +22,11 @@ def compute_topic_sentiments(
     target_words = [w for w, _ in keywords[:20]]
 
     for r in results:
-        text = r.get("title", "") + " " + (r.get("content") or "")
+        text = (r.get("title", "") + " " + (r.get("content") or "")).lower()
         label = r.get("label", "neutral")
 
         for word in target_words:
-            if word in text:
+            if word.lower() in text:
                 topic_scores[word]["count"] += 1
                 if label == "positive":
                     topic_scores[word]["pos"] += 1
