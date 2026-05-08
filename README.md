@@ -22,17 +22,21 @@ TrendInsight AIは、任意のキーワードに対して以下の3つの情報�
 
 ## 画面イメージ
 
-### Topからワードクラウドまで
+### Topから世の中の空気感まで
 
 ![screen1](docs/images/screen1.png)
 
-### トレンド・キーワード TOP5 から記事・投稿一覧まで
+### 代表的な意見、ワードクラウド
 
 ![screen2](docs/images/screen2.png)
 
-### AIによる総合マーケット・インサイト
+### トレンド・キーワード TOP5, 記事・投稿一覧
 
 ![screen3](docs/images/screen3.png)
+
+### AIによる総合マーケット・インサイト
+
+![screen4](docs/images/screen4.png)
 
 ## Key Features
 
