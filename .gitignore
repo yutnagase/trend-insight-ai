@@ -21,7 +21,7 @@ venv/
 data/
 
 # Models (LLMモデルは各環境でダウンロード)
-models/
+/models/
 
 # Environment variables
 .env
