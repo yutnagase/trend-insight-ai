@@ -39,6 +39,25 @@ markers = [
     "slow: marks tests that require ML model loading (deselect with '-m \"not slow\"')",
 ]
 
+[tool.coverage.run]
+source = ["src"]
+omit = [
+    "src/ui/*",
+    "src/orchestrator.py",
+    "src/reporter.py",
+    "src/adapters.py",
+    "src/logging_config.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "@overload",
+]
+show_missing = true
+fail_under = 70
+
 [tool.ruff]
 target-version = "py312"
 line-length = 100

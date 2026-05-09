@@ -325,6 +325,32 @@ trend_insight_ai/
 └── .env.example
 ```
 
+## Testing
+
+Protocol + DIアーキテクチャを活かし、LLM/ネットワーク/GPU不要でコアロジックを検証できるテスト構成です。
+
+```bash
+# 高速テスト（BERTモデル不要）
+uv run pytest -m "not slow"
+
+# カバレッジ付き
+uv run pytest -m "not slow" --cov --cov-report=term-missing
+
+# 全テスト（BERTモデルロード含む）
+uv run pytest
+```
+
+| テスト対象 | 戦略 | ファイル |
+|-----------|------|----------|
+| 分析タイプ判定 | 5パターン全条件を網羅 | test_analysis_type.py |
+| トピック別感情 | 境界値・集約ロジック検証 | test_topic_sentiment.py |
+| 分析パイプライン | モックanalyzer注入で統合テスト | test_analysis_pipeline.py |
+| データ収集 | HTTPレスポンスをmock | test_clients.py |
+| サービス層 | 純粋関数のユニットテスト | test_services.py |
+| BERTアンサンブル | 実モデルでの推論検証 | test_analyzer.py (`@slow`) |
+
+カバレッジ閾値: コアロジック（services/ + clients/ + models/）で **70%以上** を維持。UI層・LLM推論層・オーケストレーター（Streamlit直接依存）はカバレッジ計測対象外。
+
 ## License
 
 [MIT](LICENSE)
