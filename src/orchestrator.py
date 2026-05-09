@@ -1,9 +1,10 @@
 """分析オーケストレーター - 実行制御とUI通知の仲介."""
 
-import logging
-from concurrent.futures import ThreadPoolExecutor, Future
+import time
+from concurrent.futures import Future, ThreadPoolExecutor
 
 import streamlit as st
+import structlog
 
 from src.exceptions import (
     AnalysisPipelineError,
@@ -23,7 +24,7 @@ from src.protocols import (
 from src.services.analysis_pipeline import run_analysis
 from src.ui.pages import render_live_analysis
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def _show_error(error: TrendInsightError) -> None:
@@ -58,6 +59,10 @@ class AnalysisOrchestrator:
 
     def execute(self, keyword: str) -> None:
         """分析フローを実行し、結果を表示・保存する."""
+        log = logger.bind(keyword=keyword)
+        log.info("分析フロー開始")
+        start = time.perf_counter()
+
         # データ収集（3ソース並列）
         articles = self._collect(keyword)
         if articles is None:
@@ -83,29 +88,43 @@ class AnalysisOrchestrator:
         self._render_ai_report(result)
         self._save(result)
 
+        elapsed = time.perf_counter() - start
+        log.info("分析フロー完了", elapsed_sec=round(elapsed, 2))
+
     def _collect(self, keyword: str) -> tuple | None:
         """データ収集フェーズ."""
+        log = logger.bind(phase="collect", keyword=keyword)
+        start = time.perf_counter()
+
         with st.spinner("📰 データを収集中..."):
             try:
                 news, sns, hatena, hatena_entries = self._collector.collect(keyword)
             except BlueskyAuthError as e:
                 _show_error(e)
-                # BlueSky認証失敗でも他ソースで続行を試みる
                 try:
                     news, sns, hatena, hatena_entries = self._collector.collect(keyword)
                 except TrendInsightError:
                     return None
                 except Exception as exc:
-                    logger.error("データ収集失敗: %s", exc, exc_info=True)
+                    log.error("データ収集失敗", error=str(exc), exc_info=True)
                     _show_error(DataCollectionError(str(exc)))
                     return None
             except DataCollectionError as e:
                 _show_error(e)
                 return None
             except Exception as e:
-                logger.error("データ収集で予期しないエラー: %s", e, exc_info=True)
+                log.error("予期しないエラー", error=str(e), exc_info=True)
                 _show_error(DataCollectionError(str(e)))
                 return None
+
+        elapsed = time.perf_counter() - start
+        log.info(
+            "データ収集完了",
+            news_count=len(news),
+            bsky_count=len(sns),
+            hatena_count=len(hatena),
+            elapsed_sec=round(elapsed, 2),
+        )
 
         if not news and not sns:
             st.warning(
@@ -130,6 +149,8 @@ class AnalysisOrchestrator:
         self, keyword, news, sns, hatena, hatena_entries
     ) -> AnalysisResult | None:
         """感情分析パイプライン実行フェーズ."""
+        log = logger.bind(phase="analyze", keyword=keyword)
+        start = time.perf_counter()
         progress_bar = st.progress(0, text="分析中...")
 
         def on_progress(label: str, current: int, total: int) -> None:
@@ -147,11 +168,18 @@ class AnalysisOrchestrator:
             )
         except Exception as e:
             progress_bar.empty()
-            logger.error("分析パイプライン失敗: %s", e, exc_info=True)
+            log.error("分析パイプライン失敗", error=str(e), exc_info=True)
             _show_error(AnalysisPipelineError(str(e)))
             return None
 
         progress_bar.empty()
+        elapsed = time.perf_counter() - start
+        log.info(
+            "感情分析完了",
+            total_articles=len(result.news.results) + len(result.bsky.results) + len(result.hatena.results),
+            analysis_types=[at["label"] for at in result.analysis_types],
+            elapsed_sec=round(elapsed, 2),
+        )
         return result
 
     def _start_ai_report_async(self, result: AnalysisResult) -> Future:
@@ -163,14 +191,24 @@ class AnalysisOrchestrator:
 
     def _await_ai_report(self, result: AnalysisResult, future: Future) -> None:
         """バックグラウンドのAI総評生成結果を取得する."""
+        log = logger.bind(phase="report", keyword=result.keyword)
+        start = time.perf_counter()
+
         with st.spinner("🧠 AIが総評レポートを生成中..."):
             try:
                 result.ai_report = future.result()
             except ReportGenerationError as e:
                 _show_error(e)
             except Exception as e:
-                logger.error("AI総評生成で予期しないエラー: %s", e, exc_info=True)
+                log.error("AI総評生成失敗", error=str(e), exc_info=True)
                 _show_error(ReportGenerationError(str(e)))
+
+        elapsed = time.perf_counter() - start
+        log.info(
+            "AI総評生成完了",
+            report_length=len(result.ai_report) if result.ai_report else 0,
+            elapsed_sec=round(elapsed, 2),
+        )
 
     def _render_ai_report(self, result: AnalysisResult) -> None:
         """AI総評レポート表示フェーズ."""
@@ -183,11 +221,13 @@ class AnalysisOrchestrator:
 
     def _save(self, result: AnalysisResult) -> None:
         """履歴保存フェーズ."""
+        log = logger.bind(phase="save", keyword=result.keyword)
         try:
             self._history.save(result)
             st.info("💾 分析結果を履歴に保存しました。")
+            log.info("履歴保存完了")
         except HistorySaveError as e:
             _show_error(e)
         except Exception as e:
-            logger.error("履歴保存で予期しないエラー: %s", e, exc_info=True)
+            log.error("履歴保存失敗", error=str(e), exc_info=True)
             _show_error(HistorySaveError(str(e)))

@@ -81,6 +81,7 @@ TrendInsight AIは、任意のキーワードに対して以下の3つの情報�
 4. **外部依存ゼロ・ローカル完結** — 有料API不要、データ外部送信なし。個人開発者が継続運用できるアーキテクチャ
 5. **ProtocolベースのDIによるテスト容易性** — オーケストレーターは具象クラスに依存せず、Protocolインターフェースのみに依存。テスト時はモック注入だけでLLM/ネットワーク/ファイルI/O不要
 6. **エラーのユーザビリティ** — カスタム例外階層で「何が起きたか」と「何をすべきか」を明示。技術的詳細はログファイルに記録し、画面には出さない
+7. **構造化ログによるObservability** — structlogでフェーズ・キーワード・所要時間等のメタデータを自動付与。JSONログで障害調査・パフォーマンス分析を容易に
 
 ## Analysis Pipeline
 
@@ -279,6 +280,7 @@ streamlit run app.py
 | Word Cloud             | wordcloud                                                    |
 | LLM Inference          | llama-cpp-python + ELYZA-JP-8B (Q4_K_M GGUF)                 |
 | Data Collection        | feedparser / atproto / requests                              |
+| Logging                | structlog（構造化ログ） + stdlib logging（ファイル出力）      |
 
 各技術の詳細は [docs/](docs/) を参照してください。
 
@@ -292,6 +294,7 @@ trend_insight_ai/
 │   ├── protocols.py           # DI用Protocolインターフェース定義
 │   ├── adapters.py            # Protocol具象実装 (Collector/Reporter/History)
 │   ├── exceptions.py          # カスタム例外階層 (user_message + user_hint)
+│   ├── logging_config.py      # structlog + stdlib logging 統合設定
 │   ├── analyzer.py            # SentimentAnalyzer (Multi-BERT ensemble + soft voting)
 │   ├── reporter.py            # LLM-based insight generation
 │   ├── clients/               # データ収集クライアント

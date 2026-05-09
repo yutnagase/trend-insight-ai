@@ -1,6 +1,6 @@
 """分析パイプライン - 感情分析から統計量算出までのオーケストレーション."""
 
-import logging
+import structlog
 from datetime import datetime
 
 from src.analyzer import compute_net_score, compute_sentiment_stats, select_representative
@@ -22,7 +22,7 @@ from src.services.text_processor import (
 from src.services.topic_sentiment import compute_topic_sentiments
 from src.services.wordcloud_generator import generate_wordcloud, save_wordcloud_image
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def _analyze_articles(
@@ -205,7 +205,14 @@ def run_analysis(
                 path = save_wordcloud_image(wc, timestamp, source_key)
                 wordcloud_images[source_key] = path
 
-    logger.info("分析完了: タイプ=%s", [at["label"] for at in analysis_types])
+    logger.info(
+        "分析完了",
+        phase="analyze",
+        analysis_types=[at["label"] for at in analysis_types],
+        news_count=len(news_results),
+        bsky_count=len(sns_results),
+        hatena_count=len(hatena_results),
+    )
 
     return AnalysisResult(
         keyword=keyword,

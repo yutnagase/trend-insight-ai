@@ -391,7 +391,7 @@ class AnalysisResult(BaseModel):
 
 これにより、IDEの補完が効き、型不一致がmypy等で検出可能になりました。
 
-## 9. エラーハンドリング — ユーザビリティとObservability
+## 9. エラーハンドリングと構造化ログ — ユーザビリティとObservability
 
 ### 課題
 
@@ -399,11 +399,119 @@ class AnalysisResult(BaseModel):
 
 - 例外発生時に生のPythonトレースバックが画面に表示される
 - ユーザーが「何をすればよいか」わからない
-- ログがコンソール出力のみで、後から調査できない
+- `print()` によるデバッグ出力が散在し、後から調査できない
+- フェーズ（収集・分析・要約）ごとの所要時間やメタデータが記録されない
 
-### 設計判断 — カスタム例外階層 + 構造化ログ
+### 設計判断 — structlog + stdlib logging 統合
 
-#### 例外階層
+#### なぜstructlogか
+
+| 候補 | メリット | デメリット | 判定 |
+|------|----------|------------|------|
+| stdlib loggingのみ | 標準ライブラリ、追加依存なし | 構造化が煩雑、コンテキストバインドがない | 不採用 |
+| **structlog** | **構造化ログ、コンテキストバインド、stdlib統合** | **依存追加** | **採用** |
+| loguru | 簡潔なAPI | stdlibとの統合が弱い、シングルトン設計 | 不採用 |
+
+structlogの決め手は以下の3点です。
+
+1. **コンテキストバインド** — `logger.bind(phase="collect", keyword=keyword)` でフェーズやキーワードを一度バインドすれば、以降のログに自動付与される
+2. **stdlibブリッジ** — structlogのログをstdlib loggingのHandler経由で出力できるため、既存のTimedRotatingFileHandler等をそのまま活用可能
+3. **出力形式の切り替え** — 同じログをコンソールには人間可読形式、ファイルにはJSON形式で出力できる
+
+#### ログ設計の全体像
+
+```python
+# src/logging_config.py
+def setup_logging() -> None:
+    # ファイル: JSON形式、DEBUG以上、日付ローテーション7日保持
+    file_handler = TimedRotatingFileHandler(
+        "data/logs/app.log", when="midnight", backupCount=7
+    )
+    file_handler.setLevel(logging.DEBUG)
+
+    # コンソール: 人間可読形式、INFO以上
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)
+
+    # structlog → stdlib ブリッジ
+    structlog.configure(
+        processors=[..., ProcessorFormatter.wrap_for_formatter],
+        logger_factory=structlog.stdlib.LoggerFactory(),
+    )
+```
+
+| 出力先 | レベル | 形式 | 用途 |
+|--------|--------|------|------|
+| `data/logs/app.log` | DEBUG | JSON | 障害調査、パフォーマンス分析 |
+| コンソール | INFO | 人間可読 | 開発時の動作確認 |
+| 画面 | — | — | 技術的詳細は表示しない |
+
+#### フェーズ別ログ設計
+
+分析プロセスの各フェーズでログレベルとメタデータを制御しています。
+
+| フェーズ | ログレベル | メタデータ例 | 設計意図 |
+|----------|------------|------------|----------|
+| 収集 (collect) | INFO/WARNING/ERROR | source, keyword, article_count, filtered_media | ソース別の取得件数と失敗原因を追跡 |
+| 分析 (analyze) | INFO | total_articles, analysis_types, elapsed_sec | パイプライン全体の所要時間と結果概要 |
+| 要約 (report) | INFO/WARNING | input_tokens, output_tokens, elapsed_sec | LLM推論のパフォーマンス計測 |
+| 保存 (save) | INFO/DEBUG | total_entries | 履歴の蓄積状況 |
+
+```python
+# オーケストレーターでのフェーズ別ログ例
+def _collect(self, keyword: str) -> tuple | None:
+    log = logger.bind(phase="collect", keyword=keyword)
+    start = time.perf_counter()
+    ...
+    elapsed = time.perf_counter() - start
+    log.info(
+        "データ収集完了",
+        news_count=len(news),
+        bsky_count=len(sns),
+        hatena_count=len(hatena),
+        elapsed_sec=round(elapsed, 2),
+    )
+```
+
+```python
+# LLM推論のパフォーマンス計測例 (reporter.py)
+log = logger.bind(phase="report", keyword=keyword)
+log.info("LLM推論開始", input_tokens=token_count)
+start = time.perf_counter()
+output = llm(prompt, ...)
+elapsed = time.perf_counter() - start
+log.info("LLM推論完了", output_tokens=output_tokens, elapsed_sec=round(elapsed, 2))
+```
+
+#### ログレベルの使い分け基準
+
+| レベル | 用途 | 例 |
+|--------|------|----|
+| DEBUG | 開発時のみ有用な詳細 | キーワードtop5、ファイルパス、履歴読み込み件数 |
+| INFO | 運用上有用なイベント | フェーズ開始/完了、取得件数、所要時間 |
+| WARNING | 処理は続行するが注意が必要 | BlueSky取得失敗、トークン超過リトライ |
+| ERROR | 処理失敗 | APIエラー、モデルロード失敗、履歴保存失敗 |
+
+#### JSONログの出力例
+
+`data/logs/app.log` には以下のようなJSONが1行1イベントで記録されます。
+
+```json
+{"event": "データ収集完了", "phase": "collect", "keyword": "生成AI", "news_count": 28, "bsky_count": 15, "hatena_count": 42, "elapsed_sec": 3.41, "logger": "src.orchestrator", "level": "info", "timestamp": "2024-01-15T10:23:45.123456+09:00"}
+{"event": "LLM推論完了", "phase": "report", "keyword": "生成AI", "input_tokens": 1284, "output_tokens": 487, "elapsed_sec": 45.2, "logger": "src.reporter", "level": "info", "timestamp": "2024-01-15T10:24:30.456789+09:00"}
+```
+
+この形式により、`jq` やログ分析ツールでのフィルタリング・集計が容易です。
+
+```bash
+# 収集フェーズのログのみ抽出
+jq 'select(.phase == "collect")' data/logs/app.log
+
+# LLM推論の平均所要時間を確認
+jq 'select(.event == "LLM推論完了") | .elapsed_sec' data/logs/app.log
+```
+
+### カスタム例外階層
 
 ```python
 TrendInsightError (基底)
@@ -424,20 +532,11 @@ class ReportGenerationError(TrendInsightError):
     user_hint = "メモリ不足の可能性があります（推奨: 12GB以上）。他のアプリケーションを閉じて再度お試しください。"
 ```
 
-#### ログ設計
-
-| 出力先 | レベル | 用途 |
-|--------|--------|------|
-| `data/logs/app.log` | DEBUG | 全ログ記録、障害調査用 |
-| コンソール | INFO | 開発時の動作確認 |
-| 画面 | なし | 技術的詳細は表示しない |
-
-ログファイルは日付ローテーション（7日保持）で自動管理されます。
-
 #### オーケストレーターでのフェーズ別ハンドリング
 
 ```python
 def _collect(self, keyword: str) -> tuple | None:
+    log = logger.bind(phase="collect", keyword=keyword)
     try:
         ...
     except BlueskyAuthError as e:
@@ -447,7 +546,7 @@ def _collect(self, keyword: str) -> tuple | None:
         _show_error(e)
         return None
     except Exception as e:
-        logger.error("予期しないエラー: %s", e, exc_info=True)  # ログにスタックトレース
+        log.error("予期しないエラー", error=str(e), exc_info=True)  # 構造化ログにスタックトレース
         _show_error(DataCollectionError(str(e)))  # 画面にはユーザー向けメッセージ
         return None
 ```

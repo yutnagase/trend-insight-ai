@@ -3,7 +3,10 @@
 import re
 from collections import Counter
 
+import structlog
 from janome.tokenizer import Tokenizer
+
+logger = structlog.get_logger(__name__)
 
 # 数字のみのトークンを除外するパターン
 _NUMERIC_PATTERN = re.compile(r"^[\d,.\-+%０-９]+$")
@@ -82,4 +85,11 @@ def extract_keywords(
                 and not _SHORT_ASCII_PATTERN.match(surface)
             ):
                 words.append(surface)
-    return Counter(words).most_common()
+    result = Counter(words).most_common()
+    logger.debug(
+        "キーワード抽出完了",
+        input_texts=len(titles),
+        unique_keywords=len(result),
+        top5=[w for w, _ in result[:5]],
+    )
+    return result

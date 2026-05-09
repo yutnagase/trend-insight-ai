@@ -4,6 +4,10 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+import structlog
+
+logger = structlog.get_logger(__name__)
+
 HISTORY_PATH = Path("data/analysis_history.json")
 
 
@@ -42,6 +46,12 @@ def save_history(
         json.dumps(history, ensure_ascii=False, indent=2, default=str),
         encoding="utf-8",
     )
+    logger.info(
+        "履歴保存完了",
+        phase="save",
+        keyword=keyword,
+        total_entries=len(history),
+    )
 
 
 def load_history() -> list[dict]:
@@ -53,4 +63,5 @@ def load_history() -> list[dict]:
     if not HISTORY_PATH.exists():
         return []
     history = json.loads(HISTORY_PATH.read_text(encoding="utf-8"))
+    logger.debug("履歴読み込み", phase="save", entry_count=len(history))
     return list(reversed(history))

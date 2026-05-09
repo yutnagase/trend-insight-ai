@@ -1,11 +1,11 @@
 """クライアント共通インターフェース."""
 
-import logging
+import structlog
 from abc import ABC, abstractmethod
 
 from src.models.article import Article
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class ClientError(Exception):
@@ -52,5 +52,11 @@ class BaseClient(ABC):
         try:
             return self.fetch(keyword)
         except Exception as e:
-            logger.warning("%s fetch failed for '%s': %s", self.source_name, keyword, e)
+            logger.warning(
+                "fetch失敗",
+                phase="collect",
+                source=self.source_name,
+                keyword=keyword,
+                error=str(e),
+            )
             return []

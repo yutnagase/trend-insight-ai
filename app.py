@@ -1,10 +1,7 @@
 """TrendInsight AI - メディア・SNS・はてブの多角的トレンド感情分析アプリ."""
 
-import logging
 import os
 from datetime import datetime
-from logging.handlers import TimedRotatingFileHandler
-from pathlib import Path
 
 import streamlit as st
 from dotenv import load_dotenv
@@ -12,43 +9,12 @@ from dotenv import load_dotenv
 from src.adapters import JsonHistoryRepository, LLMReportGenerator, MultiSourceCollector
 from src.analyzer import SentimentAnalyzer
 from src.exceptions import HistoryLoadError
+from src.logging_config import setup_logging
 from src.orchestrator import AnalysisOrchestrator
 from src.ui.pages import render_archived_analysis
 
 load_dotenv()
-
-
-def _setup_logging() -> None:
-    """ロギング設定: コンソール + 日付ローテーションファイル出力."""
-    log_dir = Path("data/logs")
-    log_dir.mkdir(parents=True, exist_ok=True)
-
-    formatter = logging.Formatter(
-        "%(asctime)s [%(levelname)s] %(name)s - %(message)s"
-    )
-
-    # ファイルハンドラ: 日付で自動ローテーション、7日分保持
-    file_handler = TimedRotatingFileHandler(
-        log_dir / "app.log",
-        when="midnight",
-        backupCount=7,
-        encoding="utf-8",
-    )
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(formatter)
-
-    # コンソールハンドラ: INFO以上のみ
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
-    console_handler.setFormatter(formatter)
-
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.DEBUG)
-    root_logger.addHandler(file_handler)
-    root_logger.addHandler(console_handler)
-
-
-_setup_logging()
+setup_logging()
 
 
 @st.cache_resource

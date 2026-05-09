@@ -1,11 +1,11 @@
 """感情分析モジュール - 複数BERTモデルのアンサンブルによる感情スコアリング."""
 
-import logging
+import structlog
 
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # アンサンブル対象モデル定義
 ENSEMBLE_MODELS: list[dict[str, str | float]] = [
@@ -98,15 +98,15 @@ class SentimentAnalyzer:
 
     def __init__(self, models_config: list[dict] | None = None) -> None:
         config = models_config or ENSEMBLE_MODELS
-        logger.info("アンサンブルモデルをロード中（%d モデル）...", len(config))
+        logger.info("アンサンブルモデルをロード中", model_count=len(config))
         self._units: list[_ModelUnit] = []
         for cfg in config:
             try:
                 unit = _ModelUnit(cfg["name"], cfg["weight"])
                 self._units.append(unit)
-                logger.info("  ✓ %s (weight=%.3f)", cfg["name"], cfg["weight"])
+                logger.info("モデルロード成功", model=cfg["name"], weight=cfg["weight"])
             except Exception as e:
-                logger.warning("  ✗ %s のロード失敗: %s", cfg["name"], e)
+                logger.warning("モデルロード失敗", model=cfg["name"], error=str(e))
         if not self._units:
             raise RuntimeError("有効なモデルが1つもロードできませんでした")
         # ウェイトを正規化

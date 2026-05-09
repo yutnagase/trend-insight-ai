@@ -1,7 +1,8 @@
 """Protocol具象実装 - 既存モジュールをDIインターフェースに適合させるアダプター."""
 
-import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import structlog
 
 from src.clients import BlueskyClient, GoogleNewsClient, HatenaClient
 from src.exceptions import (
@@ -16,7 +17,7 @@ from src.models.article import Article
 from src.reporter import generate_report
 from src.services.history import load_history, save_history
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class MultiSourceCollector:
@@ -66,7 +67,7 @@ class MultiSourceCollector:
             try:
                 news_articles = future_news.result()
             except Exception as e:
-                logger.error("ニュース取得で予期しないエラー: %s", e, exc_info=True)
+                logger.error("ニュース取得で予期しないエラー", phase="collect", source="news", error=str(e), exc_info=True)
                 raise DataCollectionError(str(e)) from e
 
             # BlueSky
@@ -74,21 +75,24 @@ class MultiSourceCollector:
                 sns_articles = future_bsky.result()
             except Exception as e:
                 if "auth" in str(e).lower() or "login" in str(e).lower():
-                    logger.warning("BlueSky認証失敗: %s", e)
+                    logger.warning("BlueSky認証失敗", phase="collect", source="bluesky", error=str(e))
                     raise BlueskyAuthError(str(e)) from e
-                logger.warning("BlueSky取得失敗: %s", e)
+                logger.warning("BlueSky取得失敗", phase="collect", source="bluesky", error=str(e))
                 sns_articles = []
 
             # はてブ
             try:
                 hatena_articles, hatena_entry_data = future_hatena.result()
             except Exception as e:
-                logger.error("はてブ取得で予期しないエラー: %s", e, exc_info=True)
+                logger.error("はてブ取得で予期しないエラー", phase="collect", source="hatena", error=str(e), exc_info=True)
                 raise DataCollectionError(str(e)) from e
 
         logger.info(
-            "データ収集完了（並列）: ニュース%d件, BlueSky%d件, はてブ%d件",
-            len(news_articles), len(sns_articles), len(hatena_articles),
+            "データ収集完了",
+            phase="collect",
+            news_count=len(news_articles),
+            bsky_count=len(sns_articles),
+            hatena_count=len(hatena_articles),
         )
         return news_articles, sns_articles, hatena_articles, hatena_entry_data
 
@@ -116,7 +120,7 @@ class LLMReportGenerator:
                 analysis_types=result.analysis_types,
             )
         except Exception as e:
-            logger.error("レポート生成失敗: %s", e, exc_info=True)
+            logger.error("レポート生成失敗", phase="report", error=str(e), exc_info=True)
             raise ReportGenerationError(str(e)) from e
 
 
@@ -134,12 +138,12 @@ class JsonHistoryRepository:
                 result.ai_report,
             )
         except Exception as e:
-            logger.error("履歴保存失敗: %s", e, exc_info=True)
+            logger.error("履歴保存失敗", phase="save", error=str(e), exc_info=True)
             raise HistorySaveError(str(e)) from e
 
     def load(self) -> list[dict]:
         try:
             return load_history()
         except Exception as e:
-            logger.error("履歴読み込み失敗: %s", e, exc_info=True)
+            logger.error("履歴読み込み失敗", phase="save", error=str(e), exc_info=True)
             raise HistoryLoadError(str(e)) from e

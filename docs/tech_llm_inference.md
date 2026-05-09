@@ -148,6 +148,24 @@ def load_llm():
 
 4.5GBのモデルを毎回読み込むと数十秒かかるので、`@st.cache_resource` でアプリ起動中は1回だけ読み込むようにしています。
 
+### ログによるパフォーマンス計測
+
+LLM推論は最も時間のかかるフェーズのため、structlogで入出力トークン数と所要時間を記録しています。
+
+```python
+log = logger.bind(phase="report", keyword=keyword)
+log.info("LLM推論開始", input_tokens=token_count)
+start = time.perf_counter()
+
+output = llm(prompt, max_tokens=512, ...)
+
+elapsed = time.perf_counter() - start
+output_tokens = output.get("usage", {}).get("completion_tokens", 0)
+log.info("LLM推論完了", output_tokens=output_tokens, elapsed_sec=round(elapsed, 2))
+```
+
+プロンプトが`n_ctx`を超過する場合は代表意見を削除してリトライしますが、その際もwarningレベルでトークン数を記録し、後からプロンプト設計の改善に活用できます。
+
 ## 動作に必要なスペック
 
 本プロジェクト開発時の環境を提示しています

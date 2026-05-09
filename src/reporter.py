@@ -1,13 +1,17 @@
 """AI総評レポート生成モジュール - 軽量LLMによるインサイト生成."""
 
+import time
 from pathlib import Path
 
 import streamlit as st
+import structlog
 from huggingface_hub import hf_hub_download
 from llama_cpp import Llama
 
 from src.analyzer import compute_net_score
 from src.services.insight import compute_divergences
+
+logger = structlog.get_logger(__name__)
 
 MODEL_REPO = "elyza/Llama-3-ELYZA-JP-8B-GGUF"
 MODEL_FILE = "Llama-3-ELYZA-JP-8B-q4_k_m.gguf"
@@ -25,20 +29,26 @@ def load_llm() -> Llama:
     model_path = MODEL_DIR / MODEL_FILE
 
     if not model_path.exists():
+        logger.info("LLMモデルダウンロード開始", repo=MODEL_REPO, file=MODEL_FILE)
         downloaded = hf_hub_download(
             repo_id=MODEL_REPO,
             filename=MODEL_FILE,
             local_dir=str(MODEL_DIR),
         )
         model_path = Path(downloaded)
+        logger.info("LLMモデルダウンロード完了", path=str(model_path))
 
-    return Llama(
+    start = time.perf_counter()
+    llm = Llama(
         model_path=str(model_path),
         n_ctx=2048,
         n_threads=4,
         n_gpu_layers=0,  # CPU only
         verbose=False,
     )
+    elapsed = time.perf_counter() - start
+    logger.info("LLMモデルロード完了", model=MODEL_FILE, elapsed_sec=round(elapsed, 2))
+    return llm
 
 
 def build_prompt(
@@ -242,7 +252,12 @@ def generate_report(
     max_input_tokens = 2048 - 512 - 64  # n_ctx - max_tokens - 余裕
     token_count = len(llm.tokenize(prompt.encode("utf-8")))
     if token_count > max_input_tokens:
-        # 代表意見を削除してリトライ
+        logger.warning(
+            "プロンプトトークン超過、代表意見を削除してリトライ",
+            phase="report",
+            token_count=token_count,
+            max_tokens=max_input_tokens,
+        )
         prompt = build_prompt(
             keyword, news_stats, news_keywords, news_count, None,
             bsky_stats, bsky_keywords, bsky_count, None,
@@ -250,6 +265,11 @@ def generate_report(
             topic_sentiments=topic_sentiments,
             analysis_types=analysis_types,
         )
+        token_count = len(llm.tokenize(prompt.encode("utf-8")))
+
+    log = logger.bind(phase="report", keyword=keyword)
+    log.info("LLM推論開始", input_tokens=token_count)
+    start = time.perf_counter()
 
     output = llm(
         prompt,
@@ -259,7 +279,14 @@ def generate_report(
         stop=["\n\n\n", "---", "以上"],
     )
 
+    elapsed = time.perf_counter() - start
     generated = output["choices"][0]["text"].strip()
+    output_tokens = output.get("usage", {}).get("completion_tokens", len(generated))
+    log.info(
+        "LLM推論完了",
+        output_tokens=output_tokens,
+        elapsed_sec=round(elapsed, 2),
+    )
     # プロンプトで①から始めているので、先頭に①を付与して返す
     result = f"① {generated}" if not generated.startswith("①") else generated
     # ①②③④の前に改行を挿入（LLMが改行なしで出力するケース対策）

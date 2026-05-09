@@ -2,7 +2,10 @@
 
 from pathlib import Path
 
+import structlog
 from wordcloud import WordCloud
+
+logger = structlog.get_logger(__name__)
 
 FONT_PATH = "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf"
 IMAGES_DIR = Path("data/images")
@@ -46,4 +49,5 @@ def save_wordcloud_image(wc: WordCloud, timestamp: str, source: str) -> str:
     filename = f"wordcloud_{source}_{ts}.png"
     filepath = IMAGES_DIR / filename
     wc.to_file(str(filepath))
+    logger.debug("ワードクラウド保存", source=source, path=str(filepath))
     return str(filepath)

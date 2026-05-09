@@ -1,6 +1,6 @@
 """はてなブックマーククライアント."""
 
-import logging
+import structlog
 import time
 import urllib.parse
 
@@ -10,7 +10,7 @@ import requests
 from src.clients.base import BaseClient, ClientError
 from src.models.article import Article
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 DEFAULT_TOP_N = 5
 ENTRY_API = "https://b.hatena.ne.jp/entry/json/"
@@ -82,7 +82,13 @@ class HatenaClient(BaseClient):
         try:
             entries = self._search_entries(keyword)
         except ClientError as e:
-            logger.warning("%s fetch_with_entries failed for '%s': %s", self.source_name, keyword, e)
+            logger.warning(
+                "fetch_with_entries失敗",
+                phase="collect",
+                source=self.source_name,
+                keyword=keyword,
+                error=str(e),
+            )
             return [], []
 
         if not entries:
