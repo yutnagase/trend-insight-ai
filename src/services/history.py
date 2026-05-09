@@ -3,6 +3,7 @@
 import json
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import structlog
 
@@ -13,9 +14,9 @@ HISTORY_PATH = Path("data/analysis_history.json")
 
 def save_history(
     keyword: str,
-    news_results: list[dict],
-    sns_results: list[dict],
-    hatena_results: list[dict],
+    news_results: list[dict[str, Any]],
+    sns_results: list[dict[str, Any]],
+    hatena_results: list[dict[str, Any]],
     wordcloud_images: dict[str, str],
     ai_report: str,
 ) -> None:
@@ -30,7 +31,7 @@ def save_history(
         ai_report: AI総評レポートテキスト.
     """
     HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
-    history: list[dict] = []
+    history: list[dict[str, Any]] = []
     if HISTORY_PATH.exists():
         history = json.loads(HISTORY_PATH.read_text(encoding="utf-8"))
     history.append(
@@ -56,7 +57,7 @@ def save_history(
     )
 
 
-def load_history() -> list[dict]:
+def load_history() -> list[dict[str, Any]]:
     """履歴JSONを読み込む.
 
     Returns:

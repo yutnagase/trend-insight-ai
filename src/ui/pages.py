@@ -1,6 +1,7 @@
 """ページ描画ロジック - ライブ分析・過去分析の表示."""
 
 from datetime import datetime
+from typing import Any
 
 import streamlit as st
 
@@ -80,7 +81,7 @@ def render_live_analysis(result: AnalysisResult) -> None:
     render_article_tabs(result, live=True)
 
 
-def render_archived_analysis(entry: dict) -> None:
+def render_archived_analysis(entry: dict[str, Any]) -> None:
     """過去の分析結果を表示する."""
     keyword = entry["keyword"]
     ts = datetime.fromisoformat(entry["timestamp"])

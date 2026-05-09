@@ -1,11 +1,14 @@
 """トピック別感情分析サービス - キーワード単位での感情集約."""
 
 from collections import defaultdict
+from typing import Any
 
 
 def compute_topic_sentiments(
-    results: list[dict], keywords: list[tuple[str, int]], min_count: int = 2
-) -> list[dict]:
+    results: list[dict[str, Any]],
+    keywords: list[tuple[str, int]],
+    min_count: int = 2,
+) -> list[dict[str, Any]]:
     """キーワードごとに感情スコアを集約し、トピック×感情マップを返す.
 
     Args:

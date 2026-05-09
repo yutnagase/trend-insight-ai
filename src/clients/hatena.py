@@ -2,6 +2,7 @@
 
 import time
 import urllib.parse
+from typing import Any
 
 import feedparser
 import requests
@@ -68,7 +69,7 @@ class HatenaClient(BaseClient):
                 )
         return articles
 
-    def fetch_with_entries(self, keyword: str) -> tuple[list[Article], list[dict]]:
+    def fetch_with_entries(self, keyword: str) -> tuple[list[Article], list[dict[str, Any]]]:
         """コメントArticleリストと元記事情報の両方を返す（UI表示用）.
 
         safe_fetch同様、例外発生時は空リストを返しログに記録する。
@@ -98,7 +99,7 @@ class HatenaClient(BaseClient):
         top_entries = entries[: self._top_n]
 
         articles: list[Article] = []
-        entry_data: list[dict] = []
+        entry_data: list[dict[str, Any]] = []
 
         for entry in top_entries:
             time.sleep(0.5)
@@ -121,7 +122,7 @@ class HatenaClient(BaseClient):
                     )
         return articles, entry_data
 
-    def _search_entries(self, keyword: str) -> list[dict]:
+    def _search_entries(self, keyword: str) -> list[dict[str, Any]]:
         """はてなブックマーク検索RSSでエントリを取得する."""
         quoted_keyword = f'"{keyword}"'
         search_url = (
@@ -137,7 +138,7 @@ class HatenaClient(BaseClient):
         except Exception as e:
             raise ClientError(f"Hatena search RSS parse failed: {e}") from e
 
-        entries: list[dict] = []
+        entries: list[dict[str, Any]] = []
         for entry in feed.entries:
             if keyword not in entry.title:
                 continue

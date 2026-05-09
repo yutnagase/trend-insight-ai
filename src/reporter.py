@@ -2,6 +2,7 @@
 
 import time
 from pathlib import Path
+from typing import Any
 
 import streamlit as st
 import structlog
@@ -65,8 +66,8 @@ def build_prompt(
     hatena_keywords: list[tuple[str, int]] | None = None,
     hatena_count: int = 0,
     hatena_samples: dict[str, list[str]] | None = None,
-    topic_sentiments: dict[str, list[dict]] | None = None,
-    analysis_types: list[dict] | None = None,
+    topic_sentiments: dict[str, list[dict[str, Any]]] | None = None,
+    analysis_types: list[dict[str, str]] | None = None,
 ) -> str:
     """LLMに渡すプロンプトを構築する.
 
@@ -215,8 +216,8 @@ def generate_report(
     hatena_keywords: list[tuple[str, int]] | None = None,
     hatena_count: int = 0,
     hatena_samples: dict[str, list[str]] | None = None,
-    topic_sentiments: dict[str, list[dict]] | None = None,
-    analysis_types: list[dict] | None = None,
+    topic_sentiments: dict[str, list[dict[str, Any]]] | None = None,
+    analysis_types: list[dict[str, str]] | None = None,
 ) -> str:
     """LLMを使って総評レポートを生成する.
 

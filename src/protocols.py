@@ -1,6 +1,6 @@
 """依存性注入用のProtocolインターフェース定義."""
 
-from typing import Protocol
+from typing import Any, Protocol
 
 from src.models.analysis_result import AnalysisResult
 from src.models.article import Article
@@ -19,7 +19,7 @@ class DataCollectorProtocol(Protocol):
 
     def collect(
         self, keyword: str
-    ) -> tuple[list[Article], list[Article], list[Article], list[dict]]:
+    ) -> tuple[list[Article], list[Article], list[Article], list[dict[str, Any]]]:
         """全ソースからデータを収集する.
 
         Returns:
@@ -39,4 +39,4 @@ class HistoryRepositoryProtocol(Protocol):
 
     def save(self, result: AnalysisResult) -> None: ...
 
-    def load(self) -> list[dict]: ...
+    def load(self) -> list[dict[str, Any]]: ...

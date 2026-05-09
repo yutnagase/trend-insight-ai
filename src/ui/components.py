@@ -1,6 +1,7 @@
 """再利用可能なStreamlit UIコンポーネント."""
 
 from pathlib import Path
+from typing import Any
 
 import streamlit as st
 
@@ -47,7 +48,7 @@ def render_source_metrics(sources: list[tuple[str, dict[str, float]]]) -> None:
             render_sentiment_metrics(stats)
 
 
-def render_article_list(results: list[dict], show_author: bool = False) -> None:
+def render_article_list(results: list[dict[str, Any]], show_author: bool = False) -> None:
     """記事/投稿一覧を表示する."""
     for r in results:
         emoji = {"positive": "🟢", "negative": "🔴", "neutral": "⚪"}[r["label"]]
@@ -71,7 +72,7 @@ def render_representative_comments(
                 st.markdown(f"🔴 {s}")
 
 
-def render_topic_sentiments(topic_sentiments: dict[str, list[dict]]) -> None:
+def render_topic_sentiments(topic_sentiments: dict[str, list[dict[str, Any]]]) -> None:
     """トピック別感情分析を表示する."""
     source_labels = {"メディア": "📰 メディア", "BlueSky": "💬 BlueSky", "はてブ": "📝 はてブ"}
     active = [(k, v) for k, v in topic_sentiments.items() if v]
@@ -94,7 +95,7 @@ def render_topic_sentiments(topic_sentiments: dict[str, list[dict]]) -> None:
                 )
 
 
-def render_analysis_types(analysis_types: list[dict]) -> None:
+def render_analysis_types(analysis_types: list[dict[str, str]]) -> None:
     """分析タイプを表示する."""
     for at in analysis_types:
         st.markdown(f"{at['emoji']} **{at['label']}** — {at['reason']}")
@@ -159,11 +160,13 @@ def render_trend_keywords(result: AnalysisResult) -> None:
                 st.markdown(f"**{i}.** {word}（{count}回）")
 
 
-def render_hatena_tab_live(hatena_data: list[dict], hatena_results: list[dict]) -> None:
+def render_hatena_tab_live(
+    hatena_data: list[dict[str, Any]], hatena_results: list[dict[str, Any]]
+) -> None:
     """はてブタブ内に記事ごとのexpander形式でコメントを表示する."""
     st.caption("出典: はてなブックマーク (https://b.hatena.ne.jp)")
 
-    comments_by_url: dict[str, list[dict]] = {}
+    comments_by_url: dict[str, list[dict[str, Any]]] = {}
     for r in hatena_results:
         comments_by_url.setdefault(r["url"], []).append(r)
 
@@ -216,7 +219,7 @@ def render_article_tabs(
                     _render_hatena_tab_simple(hatena_dicts)
 
 
-def _render_hatena_tab_simple(hatena_results: list[dict]) -> None:
+def _render_hatena_tab_simple(hatena_results: list[dict[str, Any]]) -> None:
     """はてブタブ（過去データ用・expander無し）."""
     st.caption("出典: はてなブックマーク (https://b.hatena.ne.jp)")
     for r in hatena_results:

@@ -1,6 +1,7 @@
 """Protocol具象実装 - 既存モジュールをDIインターフェースに適合させるアダプター."""
 
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 
 import structlog
 
@@ -33,7 +34,7 @@ class MultiSourceCollector:
 
     def collect(
         self, keyword: str
-    ) -> tuple[list[Article], list[Article], list[Article], list[dict]]:
+    ) -> tuple[list[Article], list[Article], list[Article], list[dict[str, Any]]]:
         """3ソースを並列にフェッチし、全完了後に結果を返す."""
         news_client = GoogleNewsClient()
         bsky_client = BlueskyClient(handle=self._bsky_handle, app_password=self._bsky_password)
@@ -42,17 +43,17 @@ class MultiSourceCollector:
         news_articles: list[Article] = []
         sns_articles: list[Article] = []
         hatena_articles: list[Article] = []
-        hatena_entry_data: list[dict] = []
+        hatena_entry_data: list[dict[str, Any]] = []
 
-        def fetch_news():
+        def fetch_news() -> list[Article]:
             return news_client.safe_fetch(keyword)
 
-        def fetch_bsky():
+        def fetch_bsky() -> list[Article]:
             if bsky_client.is_configured:
                 return bsky_client.fetch(keyword)
             return []
 
-        def fetch_hatena():
+        def fetch_hatena() -> tuple[list[Article], list[dict[str, Any]]]:
             return hatena_client.fetch_with_entries(keyword)
 
         with ThreadPoolExecutor(max_workers=3) as executor:
@@ -152,7 +153,7 @@ class JsonHistoryRepository:
             logger.error("履歴保存失敗", phase="save", error=str(e), exc_info=True)
             raise HistorySaveError(str(e)) from e
 
-    def load(self) -> list[dict]:
+    def load(self) -> list[dict[str, Any]]:
         try:
             return load_history()
         except Exception as e:

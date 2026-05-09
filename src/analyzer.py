@@ -1,5 +1,7 @@
 """感情分析モジュール - 複数BERTモデルのアンサンブルによる感情スコアリング."""
 
+from typing import Any
+
 import structlog
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
@@ -97,7 +99,7 @@ class SentimentAnalyzer:
     各モデルの全クラス確率を加重平均（ソフト投票）し、最終ラベルを判定する。
     """
 
-    def __init__(self, models_config: list[dict] | None = None) -> None:
+    def __init__(self, models_config: list[dict[str, str | float]] | None = None) -> None:
         config = models_config or ENSEMBLE_MODELS
         logger.info("アンサンブルモデルをロード中", model_count=len(config))
         self._units: list[_ModelUnit] = []
@@ -175,7 +177,7 @@ class SentimentAnalyzer:
         return final_results
 
 
-def compute_sentiment_stats(results: list[dict]) -> dict[str, float]:
+def compute_sentiment_stats(results: list[dict[str, Any]]) -> dict[str, float]:
     """分析結果リストからラベル別の比率を算出する.
 
     Args:
@@ -210,7 +212,7 @@ def compute_net_score(stats: dict[str, float]) -> float:
 
 
 def select_representative(
-    results: list[dict],
+    results: list[dict[str, Any]],
     top_n: int = 1,
 ) -> dict[str, list[str]]:
     """分析結果からpositive/negativeの代表的な意見を抽出する.

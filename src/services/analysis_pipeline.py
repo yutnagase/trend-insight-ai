@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
@@ -91,7 +91,7 @@ def run_analysis(
     news_articles: list[Article],
     sns_articles: list[Article],
     hatena_articles: list[Article],
-    hatena_entry_data: list[dict[str, object]],
+    hatena_entry_data: list[dict[str, Any]],
     analyzer: SentimentAnalyzerProtocol,
     progress_callback: Callable[[str, int, int], None] | None = None,
 ) -> AnalysisResult:
@@ -152,7 +152,7 @@ def run_analysis(
     hatena_analysis = _build_source_analysis(hatena_results, hatena_texts, keyword, tokenizer)
 
     # --- トピック別感情分析 ---
-    all_topic_sentiments: dict[str, list[dict]] = {}
+    all_topic_sentiments: dict[str, list[dict[str, Any]]] = {}
     source_configs = [
         ("メディア", news_analysis),
         ("BlueSky", bsky_analysis),

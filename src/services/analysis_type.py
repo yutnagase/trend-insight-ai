@@ -1,15 +1,17 @@
 """分析タイプ判定サービス - ルールベースのパターン分類."""
 
+from typing import Any
+
 MIN_SAMPLE_COUNT = 5  # この件数未満のソースは乖離判定から除外
 
 
 def detect_analysis_types(
     net_scores: dict[str, float],
     max_divergence: float,
-    topic_sentiments: list[dict],
+    topic_sentiments: list[dict[str, Any]],
     neutral_ratios: dict[str, float],
     sample_counts: dict[str, int] | None = None,
-) -> list[dict]:
+) -> list[dict[str, str]]:
     """分析結果から該当する分析タイプを判定する.
 
     Args:
@@ -23,7 +25,7 @@ def detect_analysis_types(
         該当する分析タイプのリスト（優先度順）.
         各要素は {"type": str, "emoji": str, "label": str, "reason": str}.
     """
-    types: list[dict] = []
+    types: list[dict[str, str]] = []
 
     # サンプル数が十分なソースのみで乖離判定
     reliable_scores = net_scores

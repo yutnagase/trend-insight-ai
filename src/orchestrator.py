@@ -2,6 +2,7 @@
 
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
+from typing import Any
 
 import streamlit as st
 import structlog
@@ -91,7 +92,7 @@ class AnalysisOrchestrator:
         elapsed = time.perf_counter() - start
         log.info("分析フロー完了", elapsed_sec=round(elapsed, 2))
 
-    def _collect(self, keyword: str) -> tuple | None:
+    def _collect(self, keyword: str) -> tuple[list[Any], list[Any], list[Any], list[Any]] | None:
         """データ収集フェーズ."""
         log = logger.bind(phase="collect", keyword=keyword)
         start = time.perf_counter()
@@ -150,10 +151,10 @@ class AnalysisOrchestrator:
     def _analyze(
         self,
         keyword: str,
-        news: list,
-        sns: list,
-        hatena: list,
-        hatena_entries: list,
+        news: list[Any],
+        sns: list[Any],
+        hatena: list[Any],
+        hatena_entries: list[Any],
     ) -> AnalysisResult | None:
         """感情分析パイプライン実行フェーズ."""
         log = logger.bind(phase="analyze", keyword=keyword)
@@ -191,14 +192,14 @@ class AnalysisOrchestrator:
         )
         return result
 
-    def _start_ai_report_async(self, result: AnalysisResult) -> Future:
+    def _start_ai_report_async(self, result: AnalysisResult) -> Future[str]:
         """AI総評レポート生成をバックグラウンドスレッドで開始する."""
         executor = ThreadPoolExecutor(max_workers=1)
         future = executor.submit(self._report_generator.generate, result)
         executor.shutdown(wait=False)
         return future
 
-    def _await_ai_report(self, result: AnalysisResult, future: Future) -> None:
+    def _await_ai_report(self, result: AnalysisResult, future: Future[str]) -> None:
         """バックグラウンドのAI総評生成結果を取得する."""
         log = logger.bind(phase="report", keyword=result.keyword)
         start = time.perf_counter()
