@@ -1,6 +1,5 @@
 """分析結果の型付きデータモデル."""
 
-
 from typing import Any
 
 from pydantic import BaseModel, Field
