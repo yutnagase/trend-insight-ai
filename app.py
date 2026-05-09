@@ -7,9 +7,9 @@ from datetime import datetime
 import streamlit as st
 from dotenv import load_dotenv
 
+from src.adapters import JsonHistoryRepository, LLMReportGenerator, MultiSourceCollector
 from src.analyzer import SentimentAnalyzer
 from src.orchestrator import AnalysisOrchestrator
-from src.services.history import load_history
 from src.ui.pages import render_archived_analysis
 
 load_dotenv()
@@ -40,7 +40,8 @@ def main() -> None:
         st.markdown("[アプリパスワード生成](https://bsky.app/settings/app-passwords)")
         st.divider()
         st.subheader("📂 過去の分析を参照")
-        history = load_history()
+        history_repo = JsonHistoryRepository()
+        history = history_repo.load()
         history_options = ["（最新の分析）"] + [
             f"{datetime.fromisoformat(h['timestamp']).strftime('%Y-%m-%d %H:%M')} [{h['keyword']}]"
             for h in history
@@ -58,8 +59,14 @@ def main() -> None:
         st.stop()
 
     if run_clicked:
-        orchestrator = AnalysisOrchestrator(analyzer=_get_analyzer())
-        orchestrator.execute(keyword, bsky_handle, bsky_password)
+        # Composition Root: 依存の組み立てと注入
+        orchestrator = AnalysisOrchestrator(
+            analyzer=_get_analyzer(),
+            collector=MultiSourceCollector(bsky_handle, bsky_password),
+            report_generator=LLMReportGenerator(),
+            history_repository=history_repo,
+        )
+        orchestrator.execute(keyword)
 
 
 if __name__ == "__main__":

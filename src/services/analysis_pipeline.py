@@ -1,15 +1,9 @@
-"""分析パイプライン - データ収集から統計量算出までのオーケストレーション."""
+"""分析パイプライン - 感情分析から統計量算出までのオーケストレーション."""
 
 import logging
 from datetime import datetime
 
-from src.analyzer import (
-    SentimentAnalyzer,
-    compute_net_score,
-    compute_sentiment_stats,
-    select_representative,
-)
-from src.clients import BlueskyClient, GoogleNewsClient, HatenaClient
+from src.analyzer import compute_net_score, compute_sentiment_stats, select_representative
 from src.models.analysis_result import (
     AnalysisResult,
     AnalyzedArticle,
@@ -17,6 +11,7 @@ from src.models.analysis_result import (
     SourceStats,
 )
 from src.models.article import Article
+from src.protocols import SentimentAnalyzerProtocol
 from src.services.analysis_type import detect_analysis_types
 from src.services.insight import compute_divergences
 from src.services.text_processor import (
@@ -32,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 def _analyze_articles(
     articles: list[Article],
-    analyzer: SentimentAnalyzer,
+    analyzer: SentimentAnalyzerProtocol,
 ) -> list[AnalyzedArticle]:
     """Articleリストに感情分析を適用する."""
     results: list[AnalyzedArticle] = []
@@ -80,33 +75,6 @@ def _build_source_analysis(
     )
 
 
-def collect_data(
-    keyword: str,
-    bsky_handle: str,
-    bsky_password: str,
-) -> tuple[list[Article], list[Article], list[Article], list[dict]]:
-    """全ソースからデータを収集する.
-
-    Returns:
-        (news_articles, sns_articles, hatena_articles, hatena_entry_data)
-    """
-    news_client = GoogleNewsClient()
-    bsky_client = BlueskyClient(handle=bsky_handle, app_password=bsky_password)
-    hatena_client = HatenaClient()
-
-    news_articles = news_client.safe_fetch(keyword)
-    logger.info("ニュース記事: %d件取得", len(news_articles))
-
-    sns_articles: list[Article] = []
-    if bsky_client.is_configured:
-        sns_articles = bsky_client.safe_fetch(keyword)
-        logger.info("BlueSky投稿: %d件取得", len(sns_articles))
-
-    hatena_articles, hatena_entry_data = hatena_client.fetch_with_entries(keyword)
-    logger.info("はてブコメント: %d件取得", len(hatena_articles))
-
-    return news_articles, sns_articles, hatena_articles, hatena_entry_data
-
 
 def run_analysis(
     keyword: str,
@@ -114,7 +82,7 @@ def run_analysis(
     sns_articles: list[Article],
     hatena_articles: list[Article],
     hatena_entry_data: list[dict],
-    analyzer: SentimentAnalyzer,
+    analyzer: SentimentAnalyzerProtocol,
     progress_callback=None,
 ) -> AnalysisResult:
     """分析パイプラインを実行し、構造化された結果を返す.
