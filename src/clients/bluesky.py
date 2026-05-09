@@ -12,10 +12,32 @@ DEFAULT_FETCH_COUNT = 20
 
 # メディア・法人アカウント除外キーワード
 MEDIA_FILTER_KEYWORDS: set[str] = {
-    "kyodonews", "yahoo", "nhk", "asahi", "mainichi", "yomiuri", "sankei",
-    "nikkei", "jiji", "reuters", "afpbb", "cnn", "bbc", "tv-asahi",
-    "tbs", "ntv", "fuji", "tokyonp", "chunichi", "hokkaido-np",
-    "press", "news", "times", "journal", "media", "official",
+    "kyodonews",
+    "yahoo",
+    "nhk",
+    "asahi",
+    "mainichi",
+    "yomiuri",
+    "sankei",
+    "nikkei",
+    "jiji",
+    "reuters",
+    "afpbb",
+    "cnn",
+    "bbc",
+    "tv-asahi",
+    "tbs",
+    "ntv",
+    "fuji",
+    "tokyonp",
+    "chunichi",
+    "hokkaido-np",
+    "press",
+    "news",
+    "times",
+    "journal",
+    "media",
+    "official",
 }
 
 

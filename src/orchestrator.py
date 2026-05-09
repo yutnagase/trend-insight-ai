@@ -134,7 +134,9 @@ class AnalysisOrchestrator:
             return None
 
         if not news:
-            st.warning("ニュース記事が見つかりませんでした。はてブ・SNSのデータで分析を続行します。")
+            st.warning(
+                "ニュース記事が見つかりませんでした。はてブ・SNSのデータで分析を続行します。"
+            )
         if not sns and hasattr(self._collector, "bsky_configured"):
             if self._collector.bsky_configured:
                 st.warning(
@@ -146,7 +148,12 @@ class AnalysisOrchestrator:
         return news, sns, hatena, hatena_entries
 
     def _analyze(
-        self, keyword, news, sns, hatena, hatena_entries
+        self,
+        keyword: str,
+        news: list,
+        sns: list,
+        hatena: list,
+        hatena_entries: list,
     ) -> AnalysisResult | None:
         """感情分析パイプライン実行フェーズ."""
         log = logger.bind(phase="analyze", keyword=keyword)
@@ -176,7 +183,9 @@ class AnalysisOrchestrator:
         elapsed = time.perf_counter() - start
         log.info(
             "感情分析完了",
-            total_articles=len(result.news.results) + len(result.bsky.results) + len(result.hatena.results),
+            total_articles=len(result.news.results)
+            + len(result.bsky.results)
+            + len(result.hatena.results),
             analysis_types=[at["label"] for at in result.analysis_types],
             elapsed_sec=round(elapsed, 2),
         )

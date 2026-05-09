@@ -40,10 +40,7 @@ class GoogleNewsClient(BaseClient):
         """
         encoded = urllib.parse.quote(keyword)
         ts = datetime.now().timestamp()
-        url = (
-            f"https://news.google.com/rss/search?q={encoded}&hl=ja&gl=JP"
-            f"&ceid=JP:ja&_t={ts}"
-        )
+        url = f"https://news.google.com/rss/search?q={encoded}&hl=ja&gl=JP&ceid=JP:ja&_t={ts}"
 
         log = logger.bind(phase="collect", source=self.source_name, keyword=keyword)
 

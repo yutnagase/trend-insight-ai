@@ -1,7 +1,11 @@
 """分析パイプライン - 感情分析から統計量算出までのオーケストレーション."""
 
-import structlog
+from __future__ import annotations
+
 from datetime import datetime
+from typing import TYPE_CHECKING
+
+import structlog
 
 from src.analyzer import compute_net_score, compute_sentiment_stats, select_representative
 from src.models.analysis_result import (
@@ -10,8 +14,6 @@ from src.models.analysis_result import (
     SourceAnalysis,
     SourceStats,
 )
-from src.models.article import Article
-from src.protocols import SentimentAnalyzerProtocol
 from src.services.analysis_type import detect_analysis_types
 from src.services.insight import compute_divergences
 from src.services.text_processor import (
@@ -21,6 +23,14 @@ from src.services.text_processor import (
 )
 from src.services.topic_sentiment import compute_topic_sentiments
 from src.services.wordcloud_generator import generate_wordcloud, save_wordcloud_image
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from janome.tokenizer import Tokenizer
+
+    from src.models.article import Article
+    from src.protocols import SentimentAnalyzerProtocol
 
 logger = structlog.get_logger(__name__)
 
@@ -40,12 +50,12 @@ def _analyze_articles(
             url=article.url,
             source=article.source,
             author=article.author,
-            positive=scores["positive"],
-            negative=scores["negative"],
-            label=scores["label"],
+            positive=float(scores["positive"]),
+            negative=float(scores["negative"]),
+            label=str(scores["label"]),
             metadata=article.metadata,
         )
-        for article, scores in zip(articles, scores_list)
+        for article, scores in zip(articles, scores_list, strict=True)
     ]
 
 
@@ -53,7 +63,7 @@ def _build_source_analysis(
     results: list[AnalyzedArticle],
     titles: list[str],
     search_keyword: str,
-    tokenizer,
+    tokenizer: Tokenizer,
     extra_stop_words: set[str] | None = None,
 ) -> SourceAnalysis:
     """ソース別の統計量・キーワード・代表意見を一括算出する."""
@@ -76,15 +86,14 @@ def _build_source_analysis(
     )
 
 
-
 def run_analysis(
     keyword: str,
     news_articles: list[Article],
     sns_articles: list[Article],
     hatena_articles: list[Article],
-    hatena_entry_data: list[dict],
+    hatena_entry_data: list[dict[str, object]],
     analyzer: SentimentAnalyzerProtocol,
-    progress_callback=None,
+    progress_callback: Callable[[str, int, int], None] | None = None,
 ) -> AnalysisResult:
     """分析パイプラインを実行し、構造化された結果を返す.
 
@@ -114,12 +123,12 @@ def run_analysis(
                 url=article.url,
                 source=article.source,
                 author=article.author,
-                positive=scores["positive"],
-                negative=scores["negative"],
-                label=scores["label"],
+                positive=float(scores["positive"]),
+                negative=float(scores["negative"]),
+                label=str(scores["label"]),
                 metadata=article.metadata,
             )
-            for article, scores in zip(articles, scores_list)
+            for article, scores in zip(articles, scores_list, strict=True)
         ]
         if progress_callback:
             progress_callback(label, len(results), len(results))
@@ -139,12 +148,8 @@ def run_analysis(
     news_analysis = _build_source_analysis(
         news_results, news_titles, keyword, tokenizer, extra_stop_words=news_media_names
     )
-    bsky_analysis = _build_source_analysis(
-        sns_results, bsky_titles, keyword, tokenizer
-    )
-    hatena_analysis = _build_source_analysis(
-        hatena_results, hatena_texts, keyword, tokenizer
-    )
+    bsky_analysis = _build_source_analysis(sns_results, bsky_titles, keyword, tokenizer)
+    hatena_analysis = _build_source_analysis(hatena_results, hatena_texts, keyword, tokenizer)
 
     # --- トピック別感情分析 ---
     all_topic_sentiments: dict[str, list[dict]] = {}

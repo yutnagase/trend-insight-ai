@@ -1,11 +1,11 @@
 """はてなブックマーククライアント."""
 
-import structlog
 import time
 import urllib.parse
 
 import feedparser
 import requests
+import structlog
 
 from src.clients.base import BaseClient, ClientError
 from src.models.article import Article
@@ -125,8 +125,7 @@ class HatenaClient(BaseClient):
         """はてなブックマーク検索RSSでエントリを取得する."""
         quoted_keyword = f'"{keyword}"'
         search_url = (
-            f"{SEARCH_RSS}?q={urllib.parse.quote(quoted_keyword)}"
-            f"&users={self._min_users}&mode=rss"
+            f"{SEARCH_RSS}?q={urllib.parse.quote(quoted_keyword)}&users={self._min_users}&mode=rss"
         )
 
         try:
@@ -143,11 +142,13 @@ class HatenaClient(BaseClient):
             if keyword not in entry.title:
                 continue
             bookmark_count = int(entry.get("hatena_bookmarkcount", 0))
-            entries.append({
-                "title": entry.title,
-                "url": entry.link,
-                "bookmark_count": bookmark_count,
-            })
+            entries.append(
+                {
+                    "title": entry.title,
+                    "url": entry.link,
+                    "bookmark_count": bookmark_count,
+                }
+            )
         return entries
 
     def _get_comments(self, url: str) -> list[dict[str, str]]:
@@ -167,9 +168,11 @@ class HatenaClient(BaseClient):
         for bookmark in data["bookmarks"]:
             comment = bookmark.get("comment", "").strip()
             if comment:
-                comments.append({
-                    "user": bookmark.get("user", ""),
-                    "comment": comment,
-                    "timestamp": bookmark.get("timestamp", ""),
-                })
+                comments.append(
+                    {
+                        "user": bookmark.get("user", ""),
+                        "comment": comment,
+                        "timestamp": bookmark.get("timestamp", ""),
+                    }
+                )
         return comments

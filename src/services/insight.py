@@ -65,9 +65,7 @@ def generate_insight(
     score_parts = []
     for key, score in net_scores.items():
         neutral_pct = all_stats[key]["neutral"]
-        score_parts.append(
-            f"{source_names[key]}: スコア {score:+.2f}（中立 {neutral_pct:.0%}）"
-        )
+        score_parts.append(f"{source_names[key]}: スコア {score:+.2f}（中立 {neutral_pct:.0%}）")
     summary = " / ".join(score_parts)
 
     # 乖離分析
@@ -76,7 +74,7 @@ def generate_insight(
 
     divergences = compute_divergences(net_scores)
     max_pair = divergences[0]
-    src_a, src_b, gap, label = max_pair
+    _, _, _, _ = max_pair
 
     div_lines = []
     for src_a_i, src_b_i, gap_i, label_i in divergences:

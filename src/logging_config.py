@@ -82,4 +82,4 @@ def setup_logging() -> None:
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
     """フェーズ名付きの構造化ロガーを取得する."""
-    return structlog.get_logger(name)
+    return structlog.get_logger(name)  # type: ignore[no-any-return]

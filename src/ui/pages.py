@@ -1,7 +1,6 @@
 """ページ描画ロジック - ライブ分析・過去分析の表示."""
 
 from datetime import datetime
-from pathlib import Path
 
 import streamlit as st
 
@@ -124,7 +123,7 @@ def render_archived_analysis(entry: dict) -> None:
 
     # 記事一覧（過去データ用の簡易表示）
     st.subheader("📰 記事・投稿一覧")
-    from src.ui.components import render_article_list, _render_hatena_tab_simple
+    from src.ui.components import _render_hatena_tab_simple, render_article_list
 
     tab_names: list[str] = ["📰 メディア"]
     tab_data_list: list[str] = ["news"]
@@ -136,7 +135,7 @@ def render_archived_analysis(entry: dict) -> None:
         tab_data_list.append("hatena")
 
     tabs = st.tabs(tab_names)
-    for tab, data_type in zip(tabs, tab_data_list):
+    for tab, data_type in zip(tabs, tab_data_list, strict=False):
         with tab:
             if data_type == "news":
                 render_article_list(news_results)

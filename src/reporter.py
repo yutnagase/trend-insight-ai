@@ -88,6 +88,7 @@ def build_prompt(
     Returns:
         構造化されたプロンプト文字列.
     """
+
     def format_stats(stats: dict[str, float]) -> str:
         score = compute_net_score(stats)
         return (
@@ -148,8 +149,8 @@ def build_prompt(
     if len(net_scores) >= 2:
         divergences = compute_divergences(net_scores)
         div_lines = [
-            f"  {source_names[a]} vs {source_names[b]}: {g:.2f}（{l}）"
-            for a, b, g, l in divergences
+            f"  {source_names[a]} vs {source_names[b]}: {g:.2f}（{lbl}）"
+            for a, b, g, lbl in divergences
         ]
         divergence_text = "\n■ ソース間の乖離\n" + "\n".join(div_lines)
 
@@ -170,9 +171,7 @@ def build_prompt(
     # 分析タイプ情報
     type_text = ""
     if analysis_types:
-        type_labels = [
-            f"{at['emoji']} {at['label']}（{at['reason']}）" for at in analysis_types
-        ]
+        type_labels = [f"{at['emoji']} {at['label']}（{at['reason']}）" for at in analysis_types]
         type_text = "\n■ 分析タイプ\n  " + "\n  ".join(type_labels)
 
     prompt = f"""以下は「{keyword}」に関する複数ソースの感情分析データです。
@@ -241,9 +240,19 @@ def generate_report(
     """
     llm = load_llm()
     prompt = build_prompt(
-        keyword, news_stats, news_keywords, news_count, news_samples,
-        bsky_stats, bsky_keywords, bsky_count, bsky_samples,
-        hatena_stats, hatena_keywords, hatena_count, hatena_samples,
+        keyword,
+        news_stats,
+        news_keywords,
+        news_count,
+        news_samples,
+        bsky_stats,
+        bsky_keywords,
+        bsky_count,
+        bsky_samples,
+        hatena_stats,
+        hatena_keywords,
+        hatena_count,
+        hatena_samples,
         topic_sentiments=topic_sentiments,
         analysis_types=analysis_types,
     )
@@ -259,9 +268,19 @@ def generate_report(
             max_tokens=max_input_tokens,
         )
         prompt = build_prompt(
-            keyword, news_stats, news_keywords, news_count, None,
-            bsky_stats, bsky_keywords, bsky_count, None,
-            hatena_stats, hatena_keywords, hatena_count, None,
+            keyword,
+            news_stats,
+            news_keywords,
+            news_count,
+            None,
+            bsky_stats,
+            bsky_keywords,
+            bsky_count,
+            None,
+            hatena_stats,
+            hatena_keywords,
+            hatena_count,
+            None,
             topic_sentiments=topic_sentiments,
             analysis_types=analysis_types,
         )
@@ -280,8 +299,8 @@ def generate_report(
     )
 
     elapsed = time.perf_counter() - start
-    generated = output["choices"][0]["text"].strip()
-    output_tokens = output.get("usage", {}).get("completion_tokens", len(generated))
+    generated = output["choices"][0]["text"].strip()  # type: ignore[index]
+    output_tokens = output.get("usage", {}).get("completion_tokens", len(generated))  # type: ignore[union-attr]
     log.info(
         "LLM推論完了",
         output_tokens=output_tokens,

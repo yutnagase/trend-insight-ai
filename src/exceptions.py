@@ -56,7 +56,9 @@ class HistorySaveError(TrendInsightError):
     """履歴保存エラー."""
 
     user_message = "分析結果の保存に失敗しました。"
-    user_hint = "data/ ディレクトリの書き込み権限を確認してください。分析結果自体は画面に表示されています。"
+    user_hint = (
+        "data/ ディレクトリの書き込み権限を確認してください。分析結果自体は画面に表示されています。"
+    )
 
 
 class HistoryLoadError(TrendInsightError):

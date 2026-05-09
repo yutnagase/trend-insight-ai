@@ -16,7 +16,7 @@ def compute_topic_sentiments(
     Returns:
         トピック別スコアのリスト（ネットスコア昇順）.
     """
-    topic_scores = defaultdict(lambda: {"pos": 0, "neg": 0, "count": 0})
+    topic_scores: dict[str, dict[str, int]] = defaultdict(lambda: {"pos": 0, "neg": 0, "count": 0})
 
     # 上位キーワードのみ対象（最大20語）
     target_words = [w for w, _ in keywords[:20]]

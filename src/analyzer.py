@@ -1,7 +1,6 @@
 """感情分析モジュール - 複数BERTモデルのアンサンブルによる感情スコアリング."""
 
 import structlog
-
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
@@ -82,11 +81,13 @@ class _ModelUnit:
             if self._label_map.get("neutral", -1) == -1:
                 neu_score = max(1.0 - pos_score - neg_score, 0.0)
 
-            results.append({
-                "positive": pos_score,
-                "negative": neg_score,
-                "neutral": neu_score,
-            })
+            results.append(
+                {
+                    "positive": pos_score,
+                    "negative": neg_score,
+                    "neutral": neu_score,
+                }
+            )
         return results
 
 
@@ -102,7 +103,7 @@ class SentimentAnalyzer:
         self._units: list[_ModelUnit] = []
         for cfg in config:
             try:
-                unit = _ModelUnit(cfg["name"], cfg["weight"])
+                unit = _ModelUnit(str(cfg["name"]), float(cfg["weight"]))
                 self._units.append(unit)
                 logger.info("モデルロード成功", model=cfg["name"], weight=cfg["weight"])
             except Exception as e:
@@ -135,7 +136,7 @@ class SentimentAnalyzer:
         for unit in self._units:
             model_results = []
             for i in range(0, len(texts), BATCH_SIZE):
-                batch = texts[i:i + BATCH_SIZE]
+                batch = texts[i : i + BATCH_SIZE]
                 model_results.extend(unit.predict_batch(batch))
             all_model_results.append(model_results)
 
@@ -163,11 +164,13 @@ class SentimentAnalyzer:
             else:
                 final_label = "negative"
 
-            final_results.append({
-                "positive": pos,
-                "negative": neg,
-                "label": final_label,
-            })
+            final_results.append(
+                {
+                    "positive": pos,
+                    "negative": neg,
+                    "label": final_label,
+                }
+            )
 
         return final_results
 
@@ -207,7 +210,8 @@ def compute_net_score(stats: dict[str, float]) -> float:
 
 
 def select_representative(
-    results: list[dict], top_n: int = 1,
+    results: list[dict],
+    top_n: int = 1,
 ) -> dict[str, list[str]]:
     """分析結果からpositive/negativeの代表的な意見を抽出する.
 

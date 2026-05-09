@@ -1,6 +1,6 @@
 """Protocol具象実装 - 既存モジュールをDIインターフェースに適合させるアダプター."""
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 
 import structlog
 
@@ -36,16 +36,13 @@ class MultiSourceCollector:
     ) -> tuple[list[Article], list[Article], list[Article], list[dict]]:
         """3ソースを並列にフェッチし、全完了後に結果を返す."""
         news_client = GoogleNewsClient()
-        bsky_client = BlueskyClient(
-            handle=self._bsky_handle, app_password=self._bsky_password
-        )
+        bsky_client = BlueskyClient(handle=self._bsky_handle, app_password=self._bsky_password)
         hatena_client = HatenaClient()
 
         news_articles: list[Article] = []
         sns_articles: list[Article] = []
         hatena_articles: list[Article] = []
         hatena_entry_data: list[dict] = []
-        bsky_error: Exception | None = None
 
         def fetch_news():
             return news_client.safe_fetch(keyword)
@@ -67,7 +64,13 @@ class MultiSourceCollector:
             try:
                 news_articles = future_news.result()
             except Exception as e:
-                logger.error("ニュース取得で予期しないエラー", phase="collect", source="news", error=str(e), exc_info=True)
+                logger.error(
+                    "ニュース取得で予期しないエラー",
+                    phase="collect",
+                    source="news",
+                    error=str(e),
+                    exc_info=True,
+                )
                 raise DataCollectionError(str(e)) from e
 
             # BlueSky
@@ -75,7 +78,9 @@ class MultiSourceCollector:
                 sns_articles = future_bsky.result()
             except Exception as e:
                 if "auth" in str(e).lower() or "login" in str(e).lower():
-                    logger.warning("BlueSky認証失敗", phase="collect", source="bluesky", error=str(e))
+                    logger.warning(
+                        "BlueSky認証失敗", phase="collect", source="bluesky", error=str(e)
+                    )
                     raise BlueskyAuthError(str(e)) from e
                 logger.warning("BlueSky取得失敗", phase="collect", source="bluesky", error=str(e))
                 sns_articles = []
@@ -84,7 +89,13 @@ class MultiSourceCollector:
             try:
                 hatena_articles, hatena_entry_data = future_hatena.result()
             except Exception as e:
-                logger.error("はてブ取得で予期しないエラー", phase="collect", source="hatena", error=str(e), exc_info=True)
+                logger.error(
+                    "はてブ取得で予期しないエラー",
+                    phase="collect",
+                    source="hatena",
+                    error=str(e),
+                    exc_info=True,
+                )
                 raise DataCollectionError(str(e)) from e
 
         logger.info(

@@ -33,15 +33,17 @@ def save_history(
     history: list[dict] = []
     if HISTORY_PATH.exists():
         history = json.loads(HISTORY_PATH.read_text(encoding="utf-8"))
-    history.append({
-        "timestamp": datetime.now().isoformat(),
-        "keyword": keyword,
-        "news_results": news_results,
-        "sns_results": sns_results,
-        "hatena_results": hatena_results,
-        "wordcloud_images": wordcloud_images,
-        "ai_report": ai_report,
-    })
+    history.append(
+        {
+            "timestamp": datetime.now().isoformat(),
+            "keyword": keyword,
+            "news_results": news_results,
+            "sns_results": sns_results,
+            "hatena_results": hatena_results,
+            "wordcloud_images": wordcloud_images,
+            "ai_report": ai_report,
+        }
+    )
     HISTORY_PATH.write_text(
         json.dumps(history, ensure_ascii=False, indent=2, default=str),
         encoding="utf-8",

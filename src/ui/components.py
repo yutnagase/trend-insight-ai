@@ -5,7 +5,7 @@ from pathlib import Path
 import streamlit as st
 
 from src.analyzer import compute_net_score
-from src.models.analysis_result import AnalysisResult, SourceAnalysis
+from src.models.analysis_result import AnalysisResult
 
 
 def _score_label(score: float) -> str:
@@ -31,7 +31,7 @@ def render_sentiment_metrics(stats_dict: dict[str, float]) -> None:
 
     label = _score_label(score)
     bar_len = 20
-    pos = int(round((score + 1) / 2 * bar_len))
+    pos = round((score + 1) / 2 * bar_len)
     pos = max(0, min(bar_len, pos))
     bar = "━" * pos + "●" + "━" * (bar_len - pos)
     st.text(f"ネガ ◀{bar}▶ ポジ")
@@ -41,7 +41,7 @@ def render_sentiment_metrics(stats_dict: dict[str, float]) -> None:
 def render_source_metrics(sources: list[tuple[str, dict[str, float]]]) -> None:
     """複数ソースの感情メトリクスを横並びで表示する."""
     cols = st.columns(len(sources))
-    for col, (source_name, stats) in zip(cols, sources):
+    for col, (source_name, stats) in zip(cols, sources, strict=False):
         with col:
             st.markdown(f"#### {source_name}")
             render_sentiment_metrics(stats)
@@ -53,8 +53,7 @@ def render_article_list(results: list[dict], show_author: bool = False) -> None:
         emoji = {"positive": "🟢", "negative": "🔴", "neutral": "⚪"}[r["label"]]
         author = f" ({r['author']})" if show_author and "author" in r else ""
         st.markdown(
-            f"{emoji} [{r['title'][:80]}]({r['url']}){author} "
-            f"(positive: {r['positive']:.1%})"
+            f"{emoji} [{r['title'][:80]}]({r['url']}){author} (positive: {r['positive']:.1%})"
         )
 
 
@@ -63,7 +62,7 @@ def render_representative_comments(
 ) -> None:
     """代表コメントを横並びで表示する."""
     cols = st.columns(len(sources))
-    for col, (src_name, samples) in zip(cols, sources):
+    for col, (src_name, samples) in zip(cols, sources, strict=False):
         with col:
             st.markdown(f"**{src_name}**")
             for s in samples.get("positive", []):
@@ -81,7 +80,7 @@ def render_topic_sentiments(topic_sentiments: dict[str, list[dict]]) -> None:
         return
 
     cols = st.columns(len(active))
-    for col, (src_key, topics) in zip(cols, active):
+    for col, (src_key, topics) in zip(cols, active, strict=False):
         with col:
             st.markdown(f"**{source_labels.get(src_key, src_key)}**")
             for t in topics[:8]:
@@ -109,7 +108,7 @@ def render_wordclouds(wordcloud_images: dict[str, str]) -> None:
         st.info("ワードクラウド画像が見つかりません。")
         return
     cols = st.columns(len(available))
-    for col, (source, path) in zip(cols, available):
+    for col, (source, path) in zip(cols, available, strict=False):
         with col:
             st.markdown(f"**{source_labels.get(source, source)}**")
             st.image(path, use_container_width=True)
@@ -132,7 +131,7 @@ def render_wordclouds_live(
         return
 
     cols = st.columns(len(active))
-    for col, (source_key, src_analysis) in zip(cols, active):
+    for col, (source_key, src_analysis) in zip(cols, active, strict=False):
         with col:
             st.markdown(f"**{source_labels[source_key]}**")
             wc = generate_wordcloud(src_analysis.keywords)
@@ -153,7 +152,7 @@ def render_trend_keywords(result: AnalysisResult) -> None:
         return
 
     cols = st.columns(len(active))
-    for col, (source_key, src_analysis) in zip(cols, active):
+    for col, (source_key, src_analysis) in zip(cols, active, strict=False):
         with col:
             st.markdown(f"**{source_labels[source_key]}**")
             for i, (word, count) in enumerate(src_analysis.keywords[:5], 1):
@@ -173,8 +172,7 @@ def render_hatena_tab_live(hatena_data: list[dict], hatena_results: list[dict]) 
         hatena_entry_url = f"https://b.hatena.ne.jp/entry/s/{entry_url}"
 
         with st.expander(
-            f"📰 {article_data['title'][:60]} "
-            f"（{article_data['bookmark_count']}ブックマーク）"
+            f"📰 {article_data['title'][:60]} （{article_data['bookmark_count']}ブックマーク）"
         ):
             st.markdown(f"▶ [はてなブックマークで見る]({hatena_entry_url})")
             st.markdown("---")
@@ -182,8 +180,7 @@ def render_hatena_tab_live(hatena_data: list[dict], hatena_results: list[dict]) 
             for c in article_comments:
                 emoji = {"positive": "🟢", "negative": "🔴", "neutral": "⚪"}[c["label"]]
                 st.markdown(
-                    f"{emoji} {c['title'][:100]} "
-                    f"({c['author']}) (positive: {c['positive']:.1%})"
+                    f"{emoji} {c['title'][:100]} ({c['author']}) (positive: {c['positive']:.1%})"
                 )
 
 
@@ -206,7 +203,7 @@ def render_article_tabs(
         tab_data_list.append("hatena")
 
     tabs = st.tabs(tab_names)
-    for tab, data_type in zip(tabs, tab_data_list):
+    for tab, data_type in zip(tabs, tab_data_list, strict=False):
         with tab:
             if data_type == "news":
                 render_article_list(news_dicts)
@@ -225,6 +222,5 @@ def _render_hatena_tab_simple(hatena_results: list[dict]) -> None:
     for r in hatena_results:
         emoji = {"positive": "🟢", "negative": "🔴", "neutral": "⚪"}[r["label"]]
         st.markdown(
-            f"{emoji} {r['title'][:100]} "
-            f"({r.get('author', '')}) (positive: {r['positive']:.1%})"
+            f"{emoji} {r['title'][:100]} ({r.get('author', '')}) (positive: {r['positive']:.1%})"
         )

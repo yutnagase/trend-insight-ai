@@ -11,6 +11,7 @@ def analyzer():
     return SentimentAnalyzer()
 
 
+@pytest.mark.slow
 class TestSentimentAnalyzer:
     """SentimentAnalyzerのテスト."""
 

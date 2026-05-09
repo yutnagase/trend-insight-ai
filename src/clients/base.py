@@ -1,7 +1,8 @@
 """クライアント共通インターフェース."""
 
-import structlog
 from abc import ABC, abstractmethod
+
+import structlog
 
 from src.models.article import Article
 
