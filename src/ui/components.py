@@ -35,8 +35,8 @@ def render_sentiment_metrics(stats_dict: dict[str, float]) -> None:
     pos = round((score + 1) / 2 * bar_len)
     pos = max(0, min(bar_len, pos))
     bar = "━" * pos + "●" + "━" * (bar_len - pos)
-    st.text(f"ネガ ◀{bar}▶ ポジ")
-    st.caption(f"スコア: {score:+.2f}（{label}）")
+    st.text(f"-1.0 ◀{bar}▶ +1.0")
+    st.caption(f"Net Sentiment Score: {score:+.2f}（{label}）")
 
 
 def render_source_metrics(sources: list[tuple[str, dict[str, float]]]) -> None:
@@ -46,6 +46,10 @@ def render_source_metrics(sources: list[tuple[str, dict[str, float]]]) -> None:
         with col:
             st.markdown(f"#### {source_name}")
             render_sentiment_metrics(stats)
+    st.caption(
+        "📊 Net Sentiment Score = positive比率 − negative比率（範囲: -1.0〜+1.0）"
+        " │ 中立: -0.1〜+0.1 │ やや偏り: ±0.1〜0.3 │ 優勢: ±0.3以上"
+    )
 
 
 def render_article_list(results: list[dict[str, Any]], show_author: bool = False) -> None:
