@@ -4,9 +4,9 @@ TrendInsight AIの実装で行った技術的判断と、その根拠につい�
 
 各セクションは「課題→検討→判断→実装」の構造で記述しています。
 
-## 1. なぜ3値分析（Positive / Neutral / Negative）か
+## 1. 感情分析の進化 — 単一モデル+辞書補正からアンサンブルへ
 
-### 課題
+### 課題1: 2値→3値
 
 初期実装で採用した2値分類（positive/negative）では、ニュース見出しの大半が「ネガティブ寄り」に判定されてしまう問題がありました。
 
@@ -17,30 +17,40 @@ TrendInsight AIの実装で行った技術的判断と、その根拠につい�
 
 原因は単純で、感情分析モデルが「感情を含まない事実報道」をうまく扱えず、確信度の低いnegative判定を返していたためです。
 
-### 解決
+`koheiduck/bert-japanese-finetuned-sentiment` は実際には3クラス（POSITIVE / NEUTRAL / NEGATIVE）を出力できるモデルでした。NEUTRAL出力を正しく拾うようにしたことで、事実報道は中立として扱われるようになりました。
 
-`koheiduck/bert-japanese-finetuned-sentiment` は実際には3クラス（POSITIVE / NEUTRAL / NEGATIVE）を出力できるモデルでした。NEUTRAL出力を正しく拾うようにしたことで、事実報道は50:50（中立）として扱われるようになりました。
+### 課題2: 単一モデルの中立バイアス
+
+3クラス対応後も、ニュース記事やSNS投稿のような実データではneutral寄りに保守的に出力しやすい傾向が残りました。「死亡」「災害」「戦争」などの強いネガティブ事象を記述していても、確率が中立寄りになるケースがありました。
+
+当初はネガティブ辞書補正（34語のハードコード）で対処していましたが、以下の問題がありました。
+
+- **メンテナンスコスト** — トレンドの変化に追従できない
+- **恣意性の批判リスク** — 「人間が選んだキーワードで結果を操作している」と見なされうる
+- **情報の損失** — `1.0 - score` という変換で3クラスの確率分布を無視していた
+
+### 解決: 複数BERTモデルのアンサンブル
+
+辞書補正を完全に廃止し、異なるデータで学習された複数モデルの加重平均（ソフト投票）に移行しました。
+
+| モデル | 特性 | ウェイト |
+|--------|------|----------|
+| `koheiduck/bert-japanese-finetuned-sentiment` | 汎用・ニュース寄り。3クラス | 0.334 |
+| `christian-phu/bert-finetuned-japanese-sentiment` | レビュー特化。明確なポジ/ネガ検出力が高い | 0.333 |
+| `llm-book/bert-base-japanese-v3-marc-ja` | MARC-jaデータセット。2クラスで「はっきり判定する」役割 | 0.333 |
+
+**設計判断のポイント**:
+- 全クラス確率（softmax）を直接取得し、情報の損失なし
+- 「複数の学習済みモデルが合意した」という客観的な判定基準
+- モデル追加・差し替えが定数変更のみで可能
+- バッチ推論対応で推論速度も改善
 
 ```python
-if label == "POSITIVE":
-    pos_score = score
-elif label == "NEGATIVE":
-    neg_score = score
-else:  # NEUTRAL
-    pos_score = 0.5
-    neg_score = 0.5
-```
-
-### 補正ロジック
-
-モデルが中立と判定しても、「戦争」「死亡」「倒産」などの強いネガティブ語が含まれていればスコアを補正します。「悲惨な経験をした二人のきょうだい…」のような文が誤ってポジティブ判定されるのを防ぐためです。
-
-```python
-NEGATIVE_BOOST_WORDS = {"戦争", "悲惨", "孤児", "死亡", ...}  # 34語
-boost = sum(1 for w in NEGATIVE_BOOST_WORDS if w in title)
-if boost > 0:
-    adjustment = min(boost * 0.3, 0.5)
-    neg_score = min(neg_score + adjustment, 1.0)
+# 各モデルの全クラス確率を加重平均
+for unit in self._units:
+    probs = torch.softmax(model(**encoded).logits, dim=-1)
+final_pos = sum(results[m]["positive"] * weights[m] for m in range(num_models))
+final_neg = sum(results[m]["negative"] * weights[m] for m in range(num_models))
 ```
 
 ## 2. 多角的データ — 3媒体使用の意図
@@ -83,7 +93,7 @@ GoogleニュースRSSが返すURLは `https://news.google.com/rss/articles/CBMi.
 | **ELYZA-JP-8B (Q4_K_M)** | **~4.5GB** | **◎ 実用的**   | **採用**      |
 | Llama-3-70B              | ~40GB      | ◎              | RAM不足で不可 |
 
-12GB RAM + 4GB swap環境で、BERT感情分析モデル（~500MB）と共存できる最大サイズとしてELYZA 8B Q4_K_Mを選びました。
+12GB RAM + 4GB swap環境で、BERTアンサンブル（3モデル、約1.2～2.0GB）と共存できる最大サイズとしてELYZA 8B Q4_K_Mを選びました。
 
 ### 量子化の選択
 
@@ -97,7 +107,7 @@ Q4_K_M（4bit量子化、Mixed precision）は品質と速度のバランスが�
 
 | 処理 | 担当 | 理由 |
 |------|------|------|
-| 感情スコアリング | BERT（決定的） | 同じ入力に対して常に同じ出力 |
+| 感情分析 | BERTアンサンブル（決定的） | 同じ入力に対して常に同じ出力 |
 | 乖離計算 | コード（決定的） | 数値演算なので再現性100% |
 | トピック集約 | コード（決定的） | ルールベースで検証可能 |
 | 分析タイプ判定 | コード（決定的） | 条件分岐で説明可能 |

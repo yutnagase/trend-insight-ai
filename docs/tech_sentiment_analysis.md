@@ -1,4 +1,4 @@
-# 感情分析（Sentiment Analysis） — transformers + BERT日本語モデル
+# 感情分析（Sentiment Analysis） — 複数BERTモデルのアンサンブル
 
 ## 感情分析とは
 
@@ -8,10 +8,24 @@
 
 ## 使っている技術
 
-- **transformers**
-  - Hugging Face社が開発した自然言語処理ライブラリ。学習済みモデルを簡単に呼び出せる
-- **koheiduck/bert-japanese-finetuned-sentiment**
-  - 日本語テキストの感情を3クラス（POSITIVE / NEUTRAL / NEGATIVE）に分類するBERTモデル
+- **transformers** — Hugging Face社が開発した自然言語処理ライブラリ。学習済みモデルを簡単に呼び出せる
+- **PyTorch** — モデル推論基盤。バッチ処理・softmax確率計算に使用
+
+## アンサンブル構成
+
+単一モデルでは中立寄りに保守的な出力をしやすい傾向があるため、異なるデータで学習された複数モデルの加重平均（ソフト投票）で判定しています。
+
+| モデル | 特性 | ウェイト |
+|--------|------|----------|
+| `koheiduck/bert-japanese-finetuned-sentiment` | 汎用・ニュース寄り。3クラス分類 | 0.334 |
+| `christian-phu/bert-finetuned-japanese-sentiment` | レビュー特化。明確なポジ/ネガ検出力が高い | 0.333 |
+| `llm-book/bert-base-japanese-v3-marc-ja` | MARC-jaデータセット。2クラスで「はっきり判定する」役割 | 0.333 |
+
+### なぜアンサンブルか
+
+- 単一モデル依存を避け、特定モデルの中立バイアスを相互補完
+- 恣意性の排除（「人間がキーワードを決めた」ではなく「複数の学習済みモデルが合意した」）
+- 各モデルが異なるデータで学習されているため、トレンド変化に強い
 
 ## BERTとは
 
@@ -19,82 +33,117 @@ BERT（Bidirectional Encoder Representations from Transformers）は、Googleが
 
 「事前学習済みモデル」を使うので、自分で大量のデータを用意して学習させる必要がありません。Hugging Faceに公開されているモデルをダウンロードするだけで使えます。
 
-## 基本的な使い方
-
-```python
-from transformers import pipeline
-
-# モデルを読み込む（初回はダウンロードが走る）
-classifier = pipeline(
-    "sentiment-analysis",
-    model="koheiduck/bert-japanese-finetuned-sentiment",
-    tokenizer="koheiduck/bert-japanese-finetuned-sentiment",
-)
-
-# テキストを判定
-result = classifier("今日はとても良い天気ですね")
-print(result)
-# [{'label': 'POSITIVE', 'score': 0.92}]
-
-result = classifier("大規模な災害が発生しました")
-print(result)
-# [{'label': 'NEGATIVE', 'score': 0.87}]
-```
-
-`pipeline` に `"sentiment-analysis"` とモデル名を渡すだけで、感情分析器が手に入ります。あとはテキストを渡せばラベルとスコアが返ってきます。
-
 ## 本プロジェクトでの実装
 
-### 3クラス分類の処理
+### アーキテクチャ概要
 
-モデルの出力は `POSITIVE` / `NEUTRAL` / `NEGATIVE` のいずれかです。これをポジティブ度・ネガティブ度の数値に変換しています。
-
-```python
-result = classifier(title)[0]
-label = result["label"].upper()
-score = result["score"]
-
-if label == "POSITIVE":
-    pos_score = score
-    neg_score = 1.0 - score
-elif label == "NEGATIVE":
-    neg_score = score
-    pos_score = 1.0 - score
-else:  # NEUTRAL
-    pos_score = 0.5
-    neg_score = 0.5
+```
+テキスト入力
+    ↓
+┌─────────────────────────────────────────┐
+│  Model 1 (koheiduck)    → [pos, neu, neg] × weight  │
+│  Model 2 (christian-phu) → [pos, neu, neg] × weight  │
+│  Model 3 (llm-book)     → [pos, neu, neg] × weight  │
+└─────────────────────────────────────────┘
+    ↓ 加重平均
+最終スコア [pos, neu, neg]
+    ↓
+ラベル判定 (positive / neutral / negative)
 ```
 
-NEUTRALの場合は「どちらでもない」ので、ポジティブ・ネガティブ両方を0.5にしています。ニュースの事実報道はほとんどがここに落ちます。
+### モデルのロードと推論
 
-### 辞書補正（ネガティブブースト）
-
-BERTモデルだけでは、「戦争」「死亡」のような明らかにネガティブな語を含む文が中立判定されることがあります。そこで、あらかじめ用意したネガティブ語辞書でスコアを補正しています。
+`transformers.pipeline` ではなく `AutoModelForSequenceClassification` + `AutoTokenizer` を直接使い、バッチ推論に対応しています。
 
 ```python
-NEGATIVE_BOOST_WORDS = {"戦争", "悲惨", "孤児", "死亡", "倒産", ...}
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
+import torch
 
-boost = sum(1 for w in NEGATIVE_BOOST_WORDS if w in title)
-if boost > 0:
-    adjustment = min(boost * 0.3, 0.5)
-    neg_score = min(neg_score + adjustment, 1.0)
-    pos_score = max(pos_score - adjustment, 0.0)
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModelForSequenceClassification.from_pretrained(model_name)
+model.eval()
+
+# バッチ推論
+encoded = tokenizer(texts, padding=True, truncation=True, max_length=512, return_tensors="pt")
+with torch.no_grad():
+    logits = model(**encoded).logits
+    probs = torch.softmax(logits, dim=-1)  # 全クラスの確率を取得
 ```
 
-ネガティブ語が1つ見つかるごとに0.3ポイント補正し、最大0.5まで。これにより「悲惨な経験をした二人のきょうだい」のような文が誤ってポジティブ判定されるのを防いでいます。
+`top_k=None` 相当の処理を自前で行い、全クラスの確率分布を直接取得しています。
+
+### ラベル体系の正規化
+
+モデルごとに出力ラベルが異なります（`POSITIVE` / `LABEL_2` / `POS` など）。`model.config.id2label` を参照して自動的に positive / neutral / negative のインデックスにマッピングしています。
+
+```python
+id2label = model.config.id2label
+# 例: {0: "NEGATIVE", 1: "NEUTRAL", 2: "POSITIVE"}
+# 例: {0: "negative", 1: "positive"}（2クラスモデル）
+```
+
+2クラスモデル（neutral出力なし）の場合は、`neutral = 1.0 - pos - neg` の残余として扱います。
+
+### アンサンブル（加重平均）
+
+各モデルの正規化済みスコアを加重平均します。
+
+```python
+pos = sum(model_results[m]["positive"] * weights[m] for m in range(num_models))
+neg = sum(model_results[m]["negative"] * weights[m] for m in range(num_models))
+neu = sum(model_results[m]["neutral"] * weights[m] for m in range(num_models))
+```
 
 ### 最終ラベルの決定
 
 ```python
-if abs(pos_score - neg_score) < 0.1:
+if abs(pos - neg) < 0.1 or neu > max(pos, neg):
     final_label = "neutral"
-elif pos_score > neg_score:
+elif pos > neg:
     final_label = "positive"
 else:
     final_label = "negative"
 ```
 
-ポジティブとネガティブの差が0.1未満なら「中立」とみなします。微妙な差で無理にどちらかに振り分けないための閾値です。
+- ポジティブとネガティブの差が0.1未満 → 中立
+- 中立確率が最大 → 中立
+- それ以外は大きい方のラベルを採用
+
+### バッチ推論
+
+1件ずつの推論ではなく、`BATCH_SIZE = 16` でまとめて処理します。これにより、3モデル×多数記事の推論でもパディング・並列計算の恩恵を受けられます。
+
+```python
+for i in range(0, len(texts), BATCH_SIZE):
+    batch = texts[i:i + BATCH_SIZE]
+    results.extend(model.predict_batch(batch))
+```
+
+### フォールバック設計
+
+モデルのロードに失敗した場合（ネットワーク障害、モデル削除など）、そのモデルをスキップしてウェイトを再正規化します。最低1モデルが動作すれば分析は継続されます。
+
+```python
+# ウェイト再正規化
+total_weight = sum(u.weight for u in self._units)
+for u in self._units:
+    u.weight = u.weight / total_weight
+```
+
+## 旧実装（辞書補正方式）からの移行理由
+
+以前は単一BERTモデル + ハードコードされたネガティブ辞書（34語）でスコアを補正していました。
+
+**旧方式の問題点**:
+- 辞書のメンテナンスコスト（トレンドに追従できない）
+- 恣意性の批判リスク（「人間が選んだキーワードで結果を操作している」と見なされうる）
+- `1.0 - score` という不正確な変換（3クラスの確率分布を無視）
+
+**アンサンブル方式の利点**:
+- 辞書メンテナンス不要
+- 「複数モデルの合意」という客観的な判定基準
+- 全クラス確率を直接使用し、情報の損失なし
+- モデル追加・差し替えが設定変更のみで可能
 
 ## なぜローカル実行か
 
@@ -104,10 +153,12 @@ OpenAIのAPIなど外部サービスを使えばもっと高精度な感情分�
 - API利用料がかからない
 - ネットワーク接続がなくても動作する
 
-モデルサイズは約500MBで、一般的なPCのメモリに収まります。
+BERT-base × 3モデルで約1.2〜2.0GBのメモリを使用します。
 
 ## 参考リンク
 
 - [Hugging Face transformers](https://huggingface.co/docs/transformers/)
 - [koheiduck/bert-japanese-finetuned-sentiment](https://huggingface.co/koheiduck/bert-japanese-finetuned-sentiment)
+- [christian-phu/bert-finetuned-japanese-sentiment](https://huggingface.co/christian-phu/bert-finetuned-japanese-sentiment)
+- [llm-book/bert-base-japanese-v3-marc-ja](https://huggingface.co/llm-book/bert-base-japanese-v3-marc-ja)
 - [BERTの解説（原論文）](https://arxiv.org/abs/1810.04805)

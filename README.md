@@ -45,7 +45,8 @@ TrendInsight AIは、任意のキーワードに対して以下の3つの情報�
 ## Key Features
 
 - **定量的な感情分析パイプライン**
-  - BERT日本語モデル（3クラス分類）+ ネガティブ辞書補正で各記事・投稿をスコアリング
+  - 複数BERT日本語モデルのアンサンブル（ソフト投票）で各記事・投稿をスコアリング
+  - 単一モデル依存を排除し、異なる学習データで訓練されたモデルの合意で判定
   - ソースごとにネットスコア（positive − negative）を算出し、温度計UIで直感的に可視化
 - **ソース間乖離の定量検出**
   - 全ソースペア（メディア×SNS×はてブ）の乖離幅を自動計算
@@ -87,7 +88,7 @@ TrendInsight AIは、任意のキーワードに対して以下の3つの情報�
 
 ```mermaid
 flowchart LR
-    A[データ収集<br/>RSS / AT Protocol / API] --> B[BERT感情分析<br/>+ 辞書補正]
+    A[データ収集<br/>RSS / AT Protocol / API] --> B[BERTアンサンブル<br/>3モデル ソフト投票]
     B --> C[統計量算出<br/>ネットスコア<br/>代表意見抽出]
     B --> D[乖離検出<br/>全ペア乖離幅<br/>段階ラベル付与]
     B --> F[トピック別感情<br/>キーワード×感情集約]
@@ -107,7 +108,7 @@ flowchart LR
 
 | 処理段階         | 担当                            | 出力                          |
 | ---------------- | ------------------------------- | ----------------------------- |
-| 感情スコアリング | BERT + 辞書補正                 | 各記事のpositive/negative確率 |
+| 感情スコアリング | BERTアンサンブル（3モデル加重平均） | 各記事のpositive/negative確率 |
 | 統計集約         | コード（ルールベース）          | ソース別ネットスコア、中立率  |
 | 乖離検出         | コード（ルールベース）          | ペア別乖離幅 + 段階ラベル     |
 | トピック別感情   | コード（キーワード×ラベル集約） | 話題単位のネットスコア        |
@@ -148,7 +149,7 @@ flowchart TB
     end
 
     subgraph Core["コアロジック"]
-        AN["analyzer.py<br/>BERT 3-class + 辞書補正"]
+        AN["analyzer.py<br/>Multi-BERT Ensemble<br/>+ Soft Voting"]
         PL["services/analysis_pipeline.py<br/>分析パイプライン"]
         IN["services/insight.py<br/>乖離検出"]
         TS["services/topic_sentiment.py<br/>トピック別感情"]
@@ -273,7 +274,7 @@ streamlit run app.py
 | Layer                  | Technology                                                   |
 | ---------------------- | ------------------------------------------------------------ |
 | UI                     | Streamlit                                                    |
-| Sentiment Analysis     | transformers + `koheiduck/bert-japanese-finetuned-sentiment` |
+| Sentiment Analysis     | transformers + 複数BERTモデルアンサンブル（koheiduck / christian-phu / llm-book） |
 | Morphological Analysis | Janome                                                       |
 | Word Cloud             | wordcloud                                                    |
 | LLM Inference          | llama-cpp-python + ELYZA-JP-8B (Q4_K_M GGUF)                 |
@@ -291,7 +292,7 @@ trend_insight_ai/
 │   ├── protocols.py           # DI用Protocolインターフェース定義
 │   ├── adapters.py            # Protocol具象実装 (Collector/Reporter/History)
 │   ├── exceptions.py          # カスタム例外階層 (user_message + user_hint)
-│   ├── analyzer.py            # SentimentAnalyzer (BERT + dictionary boost)
+│   ├── analyzer.py            # SentimentAnalyzer (Multi-BERT ensemble + soft voting)
 │   ├── reporter.py            # LLM-based insight generation
 │   ├── clients/               # データ収集クライアント
 │   │   ├── base.py            # BaseClient abstract class
