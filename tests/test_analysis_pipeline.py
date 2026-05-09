@@ -1,5 +1,7 @@
 """分析パイプラインの統合テスト（モックanalyzer使用）."""
 
+from unittest.mock import patch
+
 import pytest
 
 from src.models.article import Article
@@ -41,6 +43,12 @@ class TestRunAnalysis:
     @pytest.fixture
     def analyzer(self):
         return MockAnalyzer()
+
+    @pytest.fixture(autouse=True)
+    def _mock_wordcloud(self):
+        """CI環境に日本語フォントがないためワードクラウド生成をスキップ."""
+        with patch("src.services.analysis_pipeline.generate_wordcloud", return_value=None):
+            yield
 
     def test_basic_pipeline_returns_analysis_result(self, analyzer):
         """基本的なパイプライン実行でAnalysisResultが返る."""
