@@ -12,6 +12,7 @@ venv/
 # IDE
 .idea/
 .vscode/
+!.vscode/settings.json
 *.swp
 
 # Environment

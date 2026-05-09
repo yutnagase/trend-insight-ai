@@ -1,7 +1,5 @@
 """分析タイプ判定のテスト."""
 
-import pytest
-
 from src.services.analysis_type import detect_analysis_types
 
 

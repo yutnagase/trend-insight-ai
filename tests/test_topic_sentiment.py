@@ -1,7 +1,5 @@
 """トピック別感情分析のテスト."""
 
-import pytest
-
 from src.services.topic_sentiment import compute_topic_sentiments
 
 
