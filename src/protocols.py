@@ -11,6 +11,8 @@ class SentimentAnalyzerProtocol(Protocol):
 
     def analyze(self, text: str) -> dict[str, float | str]: ...
 
+    def analyze_batch(self, texts: list[str]) -> list[dict[str, float | str]]: ...
+
 
 class DataCollectorProtocol(Protocol):
     """データ収集のインターフェース."""

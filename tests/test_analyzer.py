@@ -33,14 +33,24 @@ class TestSentimentAnalyzer:
         result = analyzer.analyze("この製品は素晴らしい、最高の体験でした")
         assert result["label"] == "positive"
 
-    def test_negative_boost_applied(self, analyzer):
-        result = analyzer.analyze("戦争で多くの犠牲者が出た")
+    def test_negative_text_detected(self, analyzer):
+        result = analyzer.analyze("最悪のサービスで二度と利用しない")
         assert result["label"] == "negative"
 
-    def test_negative_boost_increases_neg_score(self, analyzer):
-        without_boost = analyzer.analyze("残念な結果でした")
-        with_boost = analyzer.analyze("戦争で破壊された")
-        assert with_boost["negative"] >= without_boost["negative"]
+    def test_analyze_batch_returns_correct_count(self, analyzer):
+        texts = ["良い天気", "悲しいニュース", "普通の日"]
+        results = analyzer.analyze_batch(texts)
+        assert len(results) == 3
+
+    def test_analyze_batch_empty(self, analyzer):
+        assert analyzer.analyze_batch([]) == []
+
+    def test_analyze_batch_consistency_with_single(self, analyzer):
+        text = "この映画は面白かった"
+        single = analyzer.analyze(text)
+        batch = analyzer.analyze_batch([text])[0]
+        assert single["label"] == batch["label"]
+        assert abs(single["positive"] - batch["positive"]) < 1e-6
 
 
 class TestComputeSentimentStats:

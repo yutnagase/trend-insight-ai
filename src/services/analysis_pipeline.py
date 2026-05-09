@@ -29,23 +29,24 @@ def _analyze_articles(
     articles: list[Article],
     analyzer: SentimentAnalyzerProtocol,
 ) -> list[AnalyzedArticle]:
-    """Articleリストに感情分析を適用する."""
-    results: list[AnalyzedArticle] = []
-    for article in articles:
-        scores = analyzer.analyze(article.title)
-        results.append(
-            AnalyzedArticle(
-                title=article.title,
-                url=article.url,
-                source=article.source,
-                author=article.author,
-                positive=scores["positive"],
-                negative=scores["negative"],
-                label=scores["label"],
-                metadata=article.metadata,
-            )
+    """Articleリストに感情分析をバッチ適用する."""
+    if not articles:
+        return []
+    texts = [a.title for a in articles]
+    scores_list = analyzer.analyze_batch(texts)
+    return [
+        AnalyzedArticle(
+            title=article.title,
+            url=article.url,
+            source=article.source,
+            author=article.author,
+            positive=scores["positive"],
+            negative=scores["negative"],
+            label=scores["label"],
+            metadata=article.metadata,
         )
-    return results
+        for article, scores in zip(articles, scores_list)
+    ]
 
 
 def _build_source_analysis(
@@ -101,26 +102,27 @@ def run_analysis(
     """
     tokenizer = create_tokenizer()
 
-    # --- 感情分析 ---
-    def analyze_with_progress(articles, label):
-        results = []
-        total = len(articles)
-        for i, article in enumerate(articles):
-            scores = analyzer.analyze(article.title)
-            results.append(
-                AnalyzedArticle(
-                    title=article.title,
-                    url=article.url,
-                    source=article.source,
-                    author=article.author,
-                    positive=scores["positive"],
-                    negative=scores["negative"],
-                    label=scores["label"],
-                    metadata=article.metadata,
-                )
+    # --- 感情分析（バッチ推論） ---
+    def analyze_with_progress(articles: list[Article], label: str) -> list[AnalyzedArticle]:
+        if not articles:
+            return []
+        texts = [a.title for a in articles]
+        scores_list = analyzer.analyze_batch(texts)
+        results = [
+            AnalyzedArticle(
+                title=article.title,
+                url=article.url,
+                source=article.source,
+                author=article.author,
+                positive=scores["positive"],
+                negative=scores["negative"],
+                label=scores["label"],
+                metadata=article.metadata,
             )
-            if progress_callback:
-                progress_callback(label, i + 1, total)
+            for article, scores in zip(articles, scores_list)
+        ]
+        if progress_callback:
+            progress_callback(label, len(results), len(results))
         return results
 
     news_results = analyze_with_progress(news_articles, "メディア記事")
