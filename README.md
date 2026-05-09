@@ -78,6 +78,8 @@ TrendInsight AIは、任意のキーワードに対して以下の3つの情報�
 2. **既存出力の組み合わせで新しい分析を生む** — トピック別感情分析は新モデル追加ゼロで実現。BERT感情ラベル × Janomeキーワードの掛け合わせという最小コストのアプローチ
 3. **相対評価で閾値の脆弱性を排除** — 分析タイプ判定のトピック集中型は、固定閾値ではなく平均±1σで判定。データ量やトピック分布が変わっても安定動作
 4. **外部依存ゼロ・ローカル完結** — 有料API不要、データ外部送信なし。個人開発者が継続運用できるアーキテクチャ
+5. **ProtocolベースのDIによるテスト容易性** — オーケストレーターは具象クラスに依存せず、Protocolインターフェースのみに依存。テスト時はモック注入だけでLLM/ネットワーク/ファイルI/O不要
+6. **エラーのユーザビリティ** — カスタム例外階層で「何が起きたか」と「何をすべきか」を明示。技術的詳細はログファイルに記録し、画面には出さない
 
 ## Analysis Pipeline
 
@@ -128,50 +130,83 @@ flowchart LR
 
 ## Architecture
 
+本プロジェクトはクリーンアーキテクチャの原則に基づき、以下のレイヤー構成を採用しています。
+
 ```mermaid
 flowchart TB
-    subgraph UI["Streamlit UI (app.py)"]
-        UI1["🌡️ 温度計バー"]
-        UI2["📊 乖離分析パネル"]
-        UI3["📋 分析タイプ"]
-        UI4["💬 代表コメント"]
-        UI5["🎯 トピック別感情"]
-        UI6["☁️ ワードクラウド"]
+    subgraph Entry["エントリーポイント (app.py)"]
+        EP["Composition Root<br/>依存の組み立て・ルーティング"]
     end
 
-    subgraph Analysis["分析レイヤー"]
-        AN["analyzer.py<br/>BERT 3-class + 辞書補正<br/>compute_net_score()<br/>select_representative()"]
-        IN["services/insight.py<br/>compute_divergences()<br/>段階ラベル判定"]
-        TS["services/topic_sentiment.py<br/>compute_topic_sentiments()<br/>キーワード×感情集約"]
-        AT["services/analysis_type.py<br/>detect_analysis_types()<br/>統計的パターン分類"]
+    subgraph Orchestration["オーケストレーション層"]
+        OC["orchestrator.py<br/>AnalysisOrchestrator<br/>フェーズ制御・エラーハンドリング"]
     end
 
-    subgraph DataCollection["データ収集"]
+    subgraph UI["UIレイヤー (src/ui/)"]
+        UI1["pages.py<br/>ページ描画ロジック"]
+        UI2["components.py<br/>再利用可能UI部品"]
+    end
+
+    subgraph Core["コアロジック"]
+        AN["analyzer.py<br/>BERT 3-class + 辞書補正"]
+        PL["services/analysis_pipeline.py<br/>分析パイプライン"]
+        IN["services/insight.py<br/>乖離検出"]
+        TS["services/topic_sentiment.py<br/>トピック別感情"]
+        AT["services/analysis_type.py<br/>パターン分類"]
+    end
+
+    subgraph Adapters["アダプター層 (src/adapters.py)"]
+        AD1["MultiSourceCollector"]
+        AD2["LLMReportGenerator"]
+        AD3["JsonHistoryRepository"]
+    end
+
+    subgraph Protocols["インターフェース (src/protocols.py)"]
+        PR["DataCollectorProtocol<br/>ReportGeneratorProtocol<br/>HistoryRepositoryProtocol<br/>SentimentAnalyzerProtocol"]
+    end
+
+    subgraph DataCollection["データ収集 (src/clients/)"]
         C1["GoogleNewsClient<br/>RSS"]
         C2["BlueskyClient<br/>AT Protocol"]
         C3["HatenaClient<br/>公開API"]
     end
 
-    subgraph LLM["レポート生成"]
-        RP["reporter.py<br/>ELYZA-8B GGUF<br/>データ注入型プロンプト<br/>4段構成出力"]
+    subgraph Model["データモデル (src/models/)"]
+        MD1["article.py<br/>Article"]
+        MD2["analysis_result.py<br/>AnalysisResult / AnalyzedArticle"]
     end
 
-    subgraph Model["データモデル"]
-        MD["models/article.py<br/>Pydantic"]
-    end
+    EP --> OC
+    OC --> PR
+    Adapters -.->|implements| PR
+    OC --> UI1
+    UI1 --> UI2
+    OC --> PL
+    PL --> AN
+    PL --> IN
+    PL --> TS
+    PL --> AT
+    Adapters --> DataCollection
+    DataCollection --> MD1
+    PL --> MD2
 
-    DataCollection --> MD
-    MD --> Analysis
-    Analysis --> UI
-    Analysis --> LLM
-    LLM --> UI
-
+    style Entry fill:#fffde7
+    style Orchestration fill:#e3f2fd
     style UI fill:#e3f2fd
-    style Analysis fill:#e8f5e9
+    style Core fill:#e8f5e9
+    style Adapters fill:#fff3e0
+    style Protocols fill:#f3e5f5
     style DataCollection fill:#fff3e0
-    style LLM fill:#fce4ec
     style Model fill:#f3e5f5
 ```
+
+### レイヤー間の依存方向
+
+- **オーケストレーター** → Protocol（インターフェース）にのみ依存
+- **アダプター** → Protocolを実装し、具象ライブラリ（clients, reporter, history）をラップ
+- **app.py（Composition Root）** → 具象クラスを生成してオーケストレーターに注入
+
+この構成により、テスト時はモック実装を注入するだけで、Streamlit/LLM/ネットワーク/ファイルI/O無しにロジックを検証できます。
 
 ## Getting Started
 
@@ -250,29 +285,39 @@ streamlit run app.py
 
 ```
 trend_insight_ai/
-├── app.py                 # Streamlit UI + main flow
+├── app.py                     # エントリーポイント (Composition Root)
 ├── src/
-│   ├── analyzer.py        # SentimentAnalyzer (BERT + dictionary boost)
-│   ├── reporter.py        # LLM-based insight generation
-│   ├── clients/           # Data collection clients
-│   │   ├── base.py        # BaseClient abstract class
+│   ├── orchestrator.py        # 分析フロー制御 (AnalysisOrchestrator)
+│   ├── protocols.py           # DI用Protocolインターフェース定義
+│   ├── adapters.py            # Protocol具象実装 (Collector/Reporter/History)
+│   ├── exceptions.py          # カスタム例外階層 (user_message + user_hint)
+│   ├── analyzer.py            # SentimentAnalyzer (BERT + dictionary boost)
+│   ├── reporter.py            # LLM-based insight generation
+│   ├── clients/               # データ収集クライアント
+│   │   ├── base.py            # BaseClient abstract class
 │   │   ├── google_news.py
 │   │   ├── bluesky.py
 │   │   └── hatena.py
 │   ├── models/
-│   │   └── article.py     # Pydantic Article model
-│   └── services/
-│       ├── analysis_type.py   # Rule-based pattern classification
-│       ├── history.py         # Analysis history persistence
-│       ├── insight.py         # Rule-based gap detection
-│       ├── text_processor.py  # Keyword extraction (with noise filtering)
-│       ├── topic_sentiment.py # Topic-level sentiment aggregation
-│       └── wordcloud_generator.py
-├── tests/                 # pytest test suite
-├── data/                  # Auto-generated (gitignored)
-├── models/                # Auto-downloaded GGUF (gitignored)
-├── pyproject.toml         # Dependency management (uv)
-├── uv.lock                # Reproducible lock file
+│   │   ├── article.py         # Pydantic Article model
+│   │   └── analysis_result.py # 分析結果の型定義 (AnalysisResult等)
+│   ├── services/
+│   │   ├── analysis_pipeline.py   # 感情分析→統計量算出パイプライン
+│   │   ├── analysis_type.py       # Rule-based pattern classification
+│   │   ├── history.py             # Analysis history persistence
+│   │   ├── insight.py             # Rule-based gap detection
+│   │   ├── text_processor.py      # Keyword extraction (with noise filtering)
+│   │   ├── topic_sentiment.py     # Topic-level sentiment aggregation
+│   │   └── wordcloud_generator.py
+│   └── ui/
+│       ├── components.py      # 再利用可能なUI描画部品
+│       └── pages.py           # ページ単位の描画ロジック
+├── tests/                     # pytest test suite
+├── data/                      # Auto-generated (gitignored)
+│   └── logs/                  # アプリケーションログ (日付ローテーション)
+├── models/                    # Auto-downloaded GGUF (gitignored)
+├── pyproject.toml             # Dependency management (uv)
+├── uv.lock                    # Reproducible lock file
 └── .env.example
 ```
 

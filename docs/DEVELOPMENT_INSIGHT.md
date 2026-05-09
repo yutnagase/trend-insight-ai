@@ -259,3 +259,191 @@ for title in news_titles:
 当初の実装では、「positiveスコアが最も高い記事」と「negativeスコアが最も高い記事」を独立にソートして取得していました。データが1件しかない場合、その1件が両方のTop-1になるのは当然です。
 
 ラベルが`positive`の記事からのみポジ代表を、`negative`の記事からのみネガ代表を抽出するように修正しました。これにより、同一コメントがポジ・ネガ両方に表示される問題を根本的に解消しています。
+
+## 8. アーキテクチャリファクタリング — 責務分離とDI導入
+
+### 課題
+
+初期実装では`app.py`が551行に膨れ上がり、以下の責務が混在していました。
+
+- UIレンダリング
+- データ収集のオーケストレーション
+- 感情分析の実行と統計量計算
+- キーワード抽出（同一処理の3回重複呼び出し）
+- 履歴保存
+- エラーハンドリング
+
+テストを書こうとすると、Streamlit・LLM・ネットワーク・ファイルI/Oすべてが絡み、単体テストが事実上不可能な状態でした。
+
+### 設計判断 — レイヤードアーキテクチャ + DI
+
+以下の層に分離しました。
+
+| レイヤー | ファイル | 責務 |
+|----------|----------|------|
+| エントリーポイント | `app.py` (73行) | Composition Root、ルーティング |
+| オーケストレーション | `orchestrator.py` | フェーズ制御、エラーハンドリング |
+| UI | `ui/components.py`, `ui/pages.py` | 描画ロジック |
+| コアロジック | `services/analysis_pipeline.py` | 分析パイプライン |
+| インターフェース | `protocols.py` | DI用Protocol定義 |
+| アダプター | `adapters.py` | Protocol具象実装 |
+| 例外 | `exceptions.py` | カスタム例外階層 |
+
+### ProtocolベースのDI
+
+Python 3.12の`typing.Protocol`を使い、構造的部分型（Structural Subtyping）でインターフェースを定義しています。
+
+```python
+# src/protocols.py
+class DataCollectorProtocol(Protocol):
+    def collect(self, keyword: str) -> tuple[...]: ...
+
+class ReportGeneratorProtocol(Protocol):
+    def generate(self, result: AnalysisResult) -> str: ...
+```
+
+オーケストレーターはProtocolにのみ依存し、具象クラスを知りません。
+
+```python
+# src/orchestrator.py
+class AnalysisOrchestrator:
+    def __init__(
+        self,
+        analyzer: SentimentAnalyzerProtocol,
+        collector: DataCollectorProtocol,
+        report_generator: ReportGeneratorProtocol,
+        history_repository: HistoryRepositoryProtocol,
+    ) -> None: ...
+```
+
+app.py（Composition Root）で具象を組み立てて注入します。
+
+```python
+# app.py
+orchestrator = AnalysisOrchestrator(
+    analyzer=_get_analyzer(),
+    collector=MultiSourceCollector(bsky_handle, bsky_password),
+    report_generator=LLMReportGenerator(),
+    history_repository=history_repo,
+)
+```
+
+テスト時はモックを渡すだけで、外部依存ゼロでロジックを検証できます。
+
+```python
+# テスト例
+orchestrator = AnalysisOrchestrator(
+    analyzer=MockAnalyzer(),
+    collector=MockCollector(),
+    report_generator=MockReportGenerator(),
+    history_repository=MockHistoryRepository(),
+)
+```
+
+### なぜDIフレームワークを使わないか
+
+`dependency-injector`や`inject`等のDIフレームワークも検討しましたが、以下の理由で不採用としました。
+
+- 依存ライブラリを増やしたくない（ローカル完結の原則）
+- Protocol + コンストラクタ注入で十分シンプルに実現できる
+- Streamlitの`@st.cache_resource`との相性を考慮すると、手動組み立ての方が制御しやすい
+
+### 型安全性の強化
+
+分析結果の受け渡しを`list[dict]`から型付きモデルに変更しました。
+
+```python
+# src/models/analysis_result.py
+class AnalyzedArticle(BaseModel):
+    title: str
+    url: str
+    source: str
+    positive: float
+    negative: float
+    label: str  # "positive" | "neutral" | "negative"
+
+class SourceAnalysis(BaseModel):
+    results: list[AnalyzedArticle]
+    stats: SourceStats | None
+    keywords: list[tuple[str, int]]
+    samples: dict[str, list[str]]
+    net_score: float
+
+class AnalysisResult(BaseModel):
+    keyword: str
+    news: SourceAnalysis
+    bsky: SourceAnalysis
+    hatena: SourceAnalysis
+    topic_sentiments: dict[str, list[dict]]
+    analysis_types: list[dict]
+    ...
+```
+
+これにより、IDEの補完が効き、型不一致がmypy等で検出可能になりました。
+
+## 9. エラーハンドリング — ユーザビリティとObservability
+
+### 課題
+
+初期実装では以下の問題がありました。
+
+- 例外発生時に生のPythonトレースバックが画面に表示される
+- ユーザーが「何をすればよいか」わからない
+- ログがコンソール出力のみで、後から調査できない
+
+### 設計判断 — カスタム例外階層 + 構造化ログ
+
+#### 例外階層
+
+```python
+TrendInsightError (基底)
+├── DataCollectionError      # ネットワーク障害等
+├── BlueskyAuthError         # BlueSky認証失敗
+├── AnalysisPipelineError    # 感情分析処理エラー
+├── ModelLoadError           # AIモデルロード失敗
+├── ReportGenerationError    # AI総評生成失敗（メモリ不足等）
+├── HistorySaveError         # 履歴保存失敗
+└── HistoryLoadError         # 履歴読み込み失敗
+```
+
+各例外は`user_message`（何が起きたか）と`user_hint`（何をすべきか）を持ちます。
+
+```python
+class ReportGenerationError(TrendInsightError):
+    user_message = "AI総評レポートの生成に失敗しました。"
+    user_hint = "メモリ不足の可能性があります（推奨: 12GB以上）。他のアプリケーションを閉じて再度お試しください。"
+```
+
+#### ログ設計
+
+| 出力先 | レベル | 用途 |
+|--------|--------|------|
+| `data/logs/app.log` | DEBUG | 全ログ記録、障害調査用 |
+| コンソール | INFO | 開発時の動作確認 |
+| 画面 | なし | 技術的詳細は表示しない |
+
+ログファイルは日付ローテーション（7日保持）で自動管理されます。
+
+#### オーケストレーターでのフェーズ別ハンドリング
+
+```python
+def _collect(self, keyword: str) -> tuple | None:
+    try:
+        ...
+    except BlueskyAuthError as e:
+        _show_error(e)  # ユーザー向けメッセージ表示
+        ...
+    except DataCollectionError as e:
+        _show_error(e)
+        return None
+    except Exception as e:
+        logger.error("予期しないエラー: %s", e, exc_info=True)  # ログにスタックトレース
+        _show_error(DataCollectionError(str(e)))  # 画面にはユーザー向けメッセージ
+        return None
+```
+
+### 設計のポイント
+
+- **フェーズごとの独立したハンドリング** — データ収集失敗でも分析済み結果は表示、AI総評失敗でも他セクションは正常表示
+- **グレースフルデグラデーション** — BlueSky認証失敗時はメディア+はてブの2ソースで続行
+- **例外変換はアダプター層で実施** — コアロジックは例外を投げるだけ、ユーザー向け変換はアダプターが担当
