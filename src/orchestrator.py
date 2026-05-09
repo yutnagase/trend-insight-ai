@@ -1,6 +1,7 @@
 """分析オーケストレーター - 実行制御とUI通知の仲介."""
 
 import logging
+from concurrent.futures import ThreadPoolExecutor, Future
 
 import streamlit as st
 
@@ -37,6 +38,10 @@ class AnalysisOrchestrator:
     全依存をコンストラクタで受け取り、具象実装への直接依存を持たない。
     各フェーズでTrendInsightError系例外をcatchし、
     ユーザーフレンドリーなメッセージを表示する。
+
+    パフォーマンス最適化:
+    - データ収集: 3ソースを並列フェッチ（adapters層で実装）
+    - AI総評生成: UI描画と並行してバックグラウンド実行
     """
 
     def __init__(
@@ -53,7 +58,7 @@ class AnalysisOrchestrator:
 
     def execute(self, keyword: str) -> None:
         """分析フローを実行し、結果を表示・保存する."""
-        # データ収集
+        # データ収集（3ソース並列）
         articles = self._collect(keyword)
         if articles is None:
             return
@@ -67,11 +72,14 @@ class AnalysisOrchestrator:
         if result is None:
             return
 
-        # AI総評以外を先に描画し、ユーザーを待たせない
+        # AI総評をバックグラウンドで開始し、UI描画と並行させる
+        report_future = self._start_ai_report_async(result)
+
+        # UI描画（AI総評以外）— LLM推論と並行して実行される
         render_live_analysis(result)
 
-        # AI総評は最後に生成・表示
-        self._generate_ai_report(result)
+        # AI総評の結果を取得・表示
+        self._await_ai_report(result, report_future)
         self._render_ai_report(result)
         self._save(result)
 
@@ -146,11 +154,18 @@ class AnalysisOrchestrator:
         progress_bar.empty()
         return result
 
-    def _generate_ai_report(self, result: AnalysisResult) -> None:
-        """AI総評レポート生成フェーズ."""
-        with st.spinner("🧠 AIが総評レポートを生成中（初回はモデルダウンロードのため数分かかります）..."):
+    def _start_ai_report_async(self, result: AnalysisResult) -> Future:
+        """AI総評レポート生成をバックグラウンドスレッドで開始する."""
+        executor = ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(self._report_generator.generate, result)
+        executor.shutdown(wait=False)
+        return future
+
+    def _await_ai_report(self, result: AnalysisResult, future: Future) -> None:
+        """バックグラウンドのAI総評生成結果を取得する."""
+        with st.spinner("🧠 AIが総評レポートを生成中..."):
             try:
-                result.ai_report = self._report_generator.generate(result)
+                result.ai_report = future.result()
             except ReportGenerationError as e:
                 _show_error(e)
             except Exception as e:

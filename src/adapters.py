@@ -1,6 +1,7 @@
 """Protocol具象実装 - 既存モジュールをDIインターフェースに適合させるアダプター."""
 
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from src.clients import BlueskyClient, GoogleNewsClient, HatenaClient
 from src.exceptions import (
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class MultiSourceCollector:
-    """複数ソースからデータを収集する具象実装."""
+    """複数ソースからデータを並列収集する具象実装."""
 
     def __init__(self, bsky_handle: str = "", bsky_password: str = "") -> None:
         self._bsky_handle = bsky_handle
@@ -32,39 +33,63 @@ class MultiSourceCollector:
     def collect(
         self, keyword: str
     ) -> tuple[list[Article], list[Article], list[Article], list[dict]]:
+        """3ソースを並列にフェッチし、全完了後に結果を返す."""
         news_client = GoogleNewsClient()
         bsky_client = BlueskyClient(
             handle=self._bsky_handle, app_password=self._bsky_password
         )
         hatena_client = HatenaClient()
 
-        try:
-            news_articles = news_client.safe_fetch(keyword)
-        except Exception as e:
-            logger.error("ニュース取得で予期しないエラー: %s", e, exc_info=True)
-            raise DataCollectionError(str(e)) from e
-        logger.info("ニュース記事: %d件取得", len(news_articles))
-
+        news_articles: list[Article] = []
         sns_articles: list[Article] = []
-        if bsky_client.is_configured:
+        hatena_articles: list[Article] = []
+        hatena_entry_data: list[dict] = []
+        bsky_error: Exception | None = None
+
+        def fetch_news():
+            return news_client.safe_fetch(keyword)
+
+        def fetch_bsky():
+            if bsky_client.is_configured:
+                return bsky_client.fetch(keyword)
+            return []
+
+        def fetch_hatena():
+            return hatena_client.fetch_with_entries(keyword)
+
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            future_news = executor.submit(fetch_news)
+            future_bsky = executor.submit(fetch_bsky)
+            future_hatena = executor.submit(fetch_hatena)
+
+            # ニュース
             try:
-                sns_articles = bsky_client.fetch(keyword)
+                news_articles = future_news.result()
+            except Exception as e:
+                logger.error("ニュース取得で予期しないエラー: %s", e, exc_info=True)
+                raise DataCollectionError(str(e)) from e
+
+            # BlueSky
+            try:
+                sns_articles = future_bsky.result()
             except Exception as e:
                 if "auth" in str(e).lower() or "login" in str(e).lower():
                     logger.warning("BlueSky認証失敗: %s", e)
                     raise BlueskyAuthError(str(e)) from e
                 logger.warning("BlueSky取得失敗: %s", e)
-                # BlueSky失敗は致命的ではないので空リストで続行
                 sns_articles = []
-            logger.info("BlueSky投稿: %d件取得", len(sns_articles))
 
-        try:
-            hatena_articles, hatena_entry_data = hatena_client.fetch_with_entries(keyword)
-        except Exception as e:
-            logger.error("はてブ取得で予期しないエラー: %s", e, exc_info=True)
-            raise DataCollectionError(str(e)) from e
-        logger.info("はてブコメント: %d件取得", len(hatena_articles))
+            # はてブ
+            try:
+                hatena_articles, hatena_entry_data = future_hatena.result()
+            except Exception as e:
+                logger.error("はてブ取得で予期しないエラー: %s", e, exc_info=True)
+                raise DataCollectionError(str(e)) from e
 
+        logger.info(
+            "データ収集完了（並列）: ニュース%d件, BlueSky%d件, はてブ%d件",
+            len(news_articles), len(sns_articles), len(hatena_articles),
+        )
         return news_articles, sns_articles, hatena_articles, hatena_entry_data
 
 
