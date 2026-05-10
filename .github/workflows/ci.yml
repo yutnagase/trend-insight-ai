@@ -55,7 +55,7 @@ jobs:
         run: uv sync --group dev
 
       - name: mypy
-        run: uv run mypy src/
+        run: uv run mypy src/ app.py
 
   test:
     name: Test (pytest)
