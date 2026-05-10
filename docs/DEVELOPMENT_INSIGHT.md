@@ -212,14 +212,14 @@ def load_llm() -> Llama:
 ```
 既存: BERT感情分析済み記事リスト（各記事にlabel付き）
 既存: Janomeキーワード抽出結果（単語リスト）
-→ 組合せ: 各キーワードが含まれる記事のラベルを集約 → トピック別ネットスコア
+→ 組合せ: 各キーワードが含まれる記事のラベルを集約 → トピック別Net Sentiment Score
 ```
 
 この「既存資産の掛け合わせで新しい分析軸を生む」アプローチは、依存関係を増やさず、テスト容易性も維持できる点で優れています。
 
 ### 実装のポイント
 
-- キーワードが含まれる記事の感情ラベルをカウントし、`(pos - neg) / (pos + neg)` でネットスコアを算出
+- キーワードが含まれる記事の感情ラベルをカウントし、`(pos - neg) / (pos + neg)` でNet Sentiment Score（-1.0〜+1.0）を算出
 - 出現数が2件未満のトピックはノイズとして除外
 - 結果はLLMプロンプトに注入し、「どの話題がポジ／ネガに寄与しているか」を説明させる
 
@@ -473,7 +473,7 @@ class SourceAnalysis(BaseModel):
     stats: SourceStats | None
     keywords: list[tuple[str, int]]
     samples: dict[str, list[str]]
-    net_score: float
+    net_score: float  # Net Sentiment Score (-1.0〜+1.0)
 
 class AnalysisResult(BaseModel):
     keyword: str

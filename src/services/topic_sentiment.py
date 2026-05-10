@@ -17,7 +17,7 @@ def compute_topic_sentiments(
         min_count: 最低出現数（これ未満のトピックは除外）.
 
     Returns:
-        トピック別スコアのリスト（ネットスコア昇順）.
+        トピック別スコアのリスト（Net Sentiment Score昇順）.
     """
     topic_scores: dict[str, dict[str, int]] = defaultdict(lambda: {"pos": 0, "neg": 0, "count": 0})
 
