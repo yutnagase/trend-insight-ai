@@ -15,7 +15,7 @@ def detect_analysis_types(
     """分析結果から該当する分析タイプを判定する.
 
     Args:
-        net_scores: ソース名→ネットスコア（pos - neg）の辞書.
+        net_scores: ソース名→Net Sentiment Score（pos - neg）の辞書.
         max_divergence: 全ソースペアの最大乖離値.
         topic_sentiments: compute_topic_sentimentsの出力（全ソース統合）.
         neutral_ratios: ソース名→neutral比率の辞書.

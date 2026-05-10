@@ -20,7 +20,7 @@ def compute_divergences(
     """全ソースペアの乖離を計算し、乖離幅降順で返す.
 
     Args:
-        scores: ソース名→ネットスコアの辞書.
+        scores: ソース名→Net Sentiment Scoreの辞書.
 
     Returns:
         (ソースA, ソースB, 乖離幅, ラベル) のリスト（降順）.
@@ -51,7 +51,7 @@ def generate_insight(
     """
     source_names = {"news": "メディア", "bsky": "BlueSky", "hatena": "はてブ"}
 
-    # ネットスコア算出
+    # Net Sentiment Score算出
     net_scores: dict[str, float] = {"news": compute_net_score(news_stats)}
     all_stats = {"news": news_stats}
     if bsky_stats:

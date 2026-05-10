@@ -200,13 +200,13 @@ def compute_sentiment_stats(results: list[dict[str, Any]]) -> dict[str, float]:
 
 
 def compute_net_score(stats: dict[str, float]) -> float:
-    """感情比率からネットスコア（positive - negative）を算出する.
+    """感情比率からNet Sentiment Score（positive - negative）を算出する.
 
     Args:
         stats: compute_sentiment_statsの出力.
 
     Returns:
-        -1.0〜1.0のネットスコア.
+        -1.0〜+1.0のNet Sentiment Score.
     """
     return stats["positive"] - stats["negative"]
 

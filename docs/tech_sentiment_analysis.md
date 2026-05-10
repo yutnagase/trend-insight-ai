@@ -147,6 +147,14 @@ for u in self._units:
 
 ## Net Sentiment Score — スコアの定義と解釈
 
+### Net Sentiment Scoreとは
+
+Net Sentiment Scoreは、ソーシャルリスニング・メディア分析業界で広く使われる指標で、「ポジティブな声とネガティブな声の差引」で全体の論調を一つの数値に集約するものです。Brandwatch、Talkwalker、Meltwater等の商用ツールでも同名または同等の指標が採用されています。
+
+NPS（Net Promoter Score）とは異なり、アンケート回答ではなくテキストの感情分析結果に基づく点が特徴です。
+
+### 本プロジェクトでの算出方法
+
 アンサンブルによる感情分析結果をソース単位で集約した指標が **Net Sentiment Score** です。
 
 ### 算出方法
