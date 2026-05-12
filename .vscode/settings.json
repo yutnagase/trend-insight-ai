@@ -8,5 +8,5 @@
     }
   },
   "mypy-type-checker.importStrategy": "fromEnvironment",
-  "mypy-type-checker.reportingScope": "file"
+  "mypy-type-checker.reportingScope": "workspace"
 }
