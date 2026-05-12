@@ -108,15 +108,15 @@ flowchart LR
     style E fill:#fce4ec
 ```
 
-| 処理段階         | 担当                            | 出力                          |
-| ---------------- | ------------------------------- | ----------------------------- |
-| 感情スコアリング | BERTアンサンブル（3モデル加重平均） | 各記事のpositive/negative確率 |
-| 統計集約         | コード（ルールベース）          | ソース別Net Sentiment Score、中立率  |
-| 乖離検出         | コード（ルールベース）          | ペア別乖離幅 + 段階ラベル     |
-| トピック別感情   | コード（キーワード×ラベル集約） | 話題単位のNet Sentiment Score    |
-| 分析タイプ判定   | コード（統計的ルール）          | パターン分類 + 判定理由       |
-| 代表意見選定     | コード（Top-K抽出）             | pos/neg各1件×ソース数         |
-| 総評生成         | LLM（ELYZA-8B）                 | 上記データを引用した説明文    |
+| 処理段階         | 担当                                | 出力                                |
+| ---------------- | ----------------------------------- | ----------------------------------- |
+| 感情スコアリング | BERTアンサンブル（3モデル加重平均） | 各記事のpositive/negative確率       |
+| 統計集約         | コード（ルールベース）              | ソース別Net Sentiment Score、中立率 |
+| 乖離検出         | コード（ルールベース）              | ペア別乖離幅 + 段階ラベル           |
+| トピック別感情   | コード（キーワード×ラベル集約）     | 話題単位のNet Sentiment Score       |
+| 分析タイプ判定   | コード（統計的ルール）              | パターン分類 + 判定理由             |
+| 代表意見選定     | コード（Top-K抽出）                 | pos/neg各1件×ソース数               |
+| 総評生成         | LLM（ELYZA-8B）                     | 上記データを引用した説明文          |
 
 ## Analysis Type Classification
 
@@ -273,15 +273,15 @@ streamlit run app.py
 
 ## Tech Stack
 
-| Layer                  | Technology                                                   |
-| ---------------------- | ------------------------------------------------------------ |
-| UI                     | Streamlit                                                    |
+| Layer                  | Technology                                                                        |
+| ---------------------- | --------------------------------------------------------------------------------- |
+| UI                     | Streamlit                                                                         |
 | Sentiment Analysis     | transformers + 複数BERTモデルアンサンブル（koheiduck / christian-phu / llm-book） |
-| Morphological Analysis | Janome                                                       |
-| Word Cloud             | wordcloud                                                    |
-| LLM Inference          | llama-cpp-python + ELYZA-JP-8B (Q4_K_M GGUF)                 |
-| Data Collection        | feedparser / atproto / requests                              |
-| Logging                | structlog（構造化ログ） + stdlib logging（ファイル出力）      |
+| Morphological Analysis | Janome                                                                            |
+| Word Cloud             | wordcloud                                                                         |
+| LLM Inference          | llama-cpp-python + ELYZA-JP-8B (Q4_K_M GGUF)                                      |
+| Data Collection        | feedparser / atproto / requests                                                   |
+| Logging                | structlog（構造化ログ） + stdlib logging（ファイル出力）                          |
 
 各技術の詳細は [docs/](docs/) を参照してください。
 
@@ -330,6 +330,8 @@ trend_insight_ai/
 
 Protocol + DIアーキテクチャを活かし、LLM/ネットワーク/GPU不要でコアロジックを検証できるテスト構成です。
 
+### Test (pytest)
+
 ```bash
 # 高速テスト（BERTモデル不要）
 uv run pytest -m "not slow"
@@ -365,14 +367,14 @@ uv run mypy src/
 trivy fs . --scanners vuln,secret --severity HIGH,CRITICAL
 ```
 
-| テスト対象 | 戦略 | ファイル |
-|-----------|------|----------|
-| 分析タイプ判定 | 5パターン全条件を網羅 | test_analysis_type.py |
-| トピック別感情 | 境界値・集約ロジック検証 | test_topic_sentiment.py |
-| 分析パイプライン | モックanalyzer注入で統合テスト | test_analysis_pipeline.py |
-| データ収集 | HTTPレスポンスをmock | test_clients.py |
-| サービス層 | 純粋関数のユニットテスト | test_services.py |
-| BERTアンサンブル | 実モデルでの推論検証 | test_analyzer.py (`@slow`) |
+| テスト対象       | 戦略                           | ファイル                   |
+| ---------------- | ------------------------------ | -------------------------- |
+| 分析タイプ判定   | 5パターン全条件を網羅          | test_analysis_type.py      |
+| トピック別感情   | 境界値・集約ロジック検証       | test_topic_sentiment.py    |
+| 分析パイプライン | モックanalyzer注入で統合テスト | test_analysis_pipeline.py  |
+| データ収集       | HTTPレスポンスをmock           | test_clients.py            |
+| サービス層       | 純粋関数のユニットテスト       | test_services.py           |
+| BERTアンサンブル | 実モデルでの推論検証           | test_analyzer.py (`@slow`) |
 
 カバレッジ閾値: コアロジック（services/ + clients/ + models/）で **70%以上** を維持。UI層・LLM推論層・オーケストレーター（Streamlit直接依存）はカバレッジ計測対象外。
 
