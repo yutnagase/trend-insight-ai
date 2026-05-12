@@ -341,6 +341,30 @@ uv run pytest -m "not slow" --cov --cov-report=term-missing
 uv run pytest
 ```
 
+### Lint & Format (Ruff)
+
+```bash
+# リンター
+uv run ruff check .
+
+# フォーマッター
+uv run ruff format --check .
+```
+
+### Type Check (mypy)
+
+```bash
+uv run mypy src/
+```
+
+### Security Scan (Trivy)
+
+依存パッケージの既知の脆弱性（CVE）を検出します。[Trivy](https://trivy.dev/) のインストールが必要です。
+
+```bash
+trivy fs . --scanners vuln,secret --severity HIGH,CRITICAL
+```
+
 | テスト対象 | 戦略 | ファイル |
 |-----------|------|----------|
 | 分析タイプ判定 | 5パターン全条件を網羅 | test_analysis_type.py |
